@@ -976,8 +976,25 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorV2Service,
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
+	ProvideSubscriptionQuotaResetMonitorService,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
+
+// ProvideSubscriptionQuotaResetMonitorService creates and starts the official
+// OpenAI seven-day reset watcher. Its scheduler is deliberately independent of
+// channel monitor probes; it only runs for explicitly configured rules.
+func ProvideSubscriptionQuotaResetMonitorService(
+	repo SubscriptionQuotaResetMonitorRepository,
+	accountRepo AccountRepository,
+	quota *OpenAIQuotaService,
+	subscription *SubscriptionService,
+	audit *AuditLogService,
+	leader LeaderLockCache,
+) *SubscriptionQuotaResetMonitorService {
+	svc := NewSubscriptionQuotaResetMonitorService(repo, accountRepo, quota, subscription, audit, leader)
+	svc.Start()
+	return svc
+}
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。
 func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache, quotaRepo UserPlatformQuotaRepository, tw *TimingWheelService) *UserPlatformQuotaUsageFlusher {

@@ -725,6 +725,41 @@ export default {
       }
     },
 
+    channelMonitorReset: {
+      tab: '官方重置联动',
+      title: '官方重置联动',
+      description: '检测 OpenAI OAuth 账号的官方七天窗口重置，并按规则重置指定订阅。默认仅观察，不会自动改动订阅。',
+      create: '新增联动规则',
+      createTitle: '新增官方重置联动',
+      editTitle: '编辑官方重置联动',
+      name: '规则名称',
+      accounts: '来源账号 ID',
+      accountsHint: '仅支持 OpenAI OAuth 母账号，多个 ID 用英文逗号分隔。',
+      subscriptions: '目标订阅 ID',
+      subscriptionsHint: '只影响这里明确选择的订阅，多个 ID 用英文逗号分隔。',
+      interval: '检查间隔（秒）',
+      threshold: '用量下降阈值（百分点）',
+      weekly: '每周配额',
+      daily: '每日配额',
+      monthly: '每月配额',
+      fiveHour: '五小时配额',
+      creditPolicy: '重置卡消耗也触发订阅重置',
+      enabled: '启用检查',
+      executionEnabled: '启用自动执行',
+      safetyHint: '建议先保持自动执行关闭，观察历史记录确认规则无误后再开启。手动检查始终只读。',
+      status: '模式',
+      lastCheck: '上次检查',
+      actions: '操作',
+      automatic: '自动执行',
+      observing: '仅观察',
+      check: '立即检查',
+      history: '历史记录',
+      empty: '暂无联动规则',
+      noEvents: '暂无事件记录',
+      createSuccess: '联动规则创建成功',
+      updateSuccess: '联动规则更新成功'
+    },
+
     // Subscriptions Management
     subscriptions: {
       title: '订阅管理',
