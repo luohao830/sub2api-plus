@@ -745,6 +745,7 @@ export default {
       daily: 'Daily quota',
       monthly: 'Monthly quota',
       fiveHour: 'Five-hour quota',
+      windowCascadeHint: 'Link rules reset hierarchically: monthly includes weekly, daily, and five-hour; weekly includes daily and five-hour; daily includes five-hour.',
       creditPolicy: 'Also reset subscriptions when a reset credit is consumed',
       enabled: 'Enable checks',
       executionEnabled: 'Enable automatic execution',

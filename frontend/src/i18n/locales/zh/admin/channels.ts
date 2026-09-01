@@ -745,6 +745,7 @@ export default {
       daily: '每日配额',
       monthly: '每月配额',
       fiveHour: '五小时配额',
+      windowCascadeHint: '联动规则按层级重置：月包含周、日和五小时；周包含日和五小时；日包含五小时。',
       creditPolicy: '重置卡消耗也触发订阅重置',
       enabled: '启用检查',
       executionEnabled: '启用自动执行',

@@ -59,6 +59,7 @@
         <label class="flex items-center gap-2"><input v-model="form.reset_monthly" type="checkbox" @change="normalizeResetWindows" /> {{ t('admin.channelMonitorReset.monthly') }}</label>
         <label class="flex items-center gap-2"><input v-model="form.reset_five_hour" type="checkbox" @change="normalizeResetWindows" /> {{ t('admin.channelMonitorReset.fiveHour') }}</label>
       </div>
+      <p class="-mt-2 text-xs text-gray-400">{{ t('admin.channelMonitorReset.windowCascadeHint') }}</p>
       <label class="flex items-center gap-2"><input v-model="form.credit_policy" type="checkbox" true-value="propagate" false-value="ignore" /> {{ t('admin.channelMonitorReset.creditPolicy') }}</label>
       <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
         <label class="flex items-center justify-between"><span class="input-label mb-0">{{ t('admin.channelMonitorReset.enabled') }}</span><Toggle v-model="form.enabled" /></label>
@@ -115,7 +116,7 @@ async function loadOptions() {
     optionsLoading.value = false
   }
 }
-watch(() => props.monitor, monitor => { if (monitor) Object.assign(form, { ...monitor }); else Object.assign(form, { name: '', enabled: false, execution_enabled: false, interval_seconds: 600, drop_threshold_percent: 1, credit_policy: 'ignore', reset_daily: false, reset_weekly: true, reset_monthly: false, reset_five_hour: false, account_ids: [], subscription_ids: [] }) }, { immediate: true })
+watch(() => props.monitor, monitor => { if (monitor) Object.assign(form, { ...monitor }); else Object.assign(form, { name: '', enabled: false, execution_enabled: false, interval_seconds: 600, drop_threshold_percent: 1, credit_policy: 'ignore', reset_daily: false, reset_weekly: true, reset_monthly: false, reset_five_hour: false, account_ids: [], subscription_ids: [] }); normalizeResetWindows() }, { immediate: true })
 watch(() => props.show, show => { if (show) { openDropdown.value = null; void loadOptions() } })
 async function submit() { if (!form.account_ids.length || !form.subscription_ids.length || (!form.reset_daily && !form.reset_weekly && !form.reset_monthly && !form.reset_five_hour)) return; saving.value = true; try { if (props.monitor) await adminAPI.subscriptionQuotaResetMonitor.update(props.monitor.id, form); else await adminAPI.subscriptionQuotaResetMonitor.create(form); appStore.showSuccess(t(props.monitor ? 'admin.channelMonitorReset.updateSuccess' : 'admin.channelMonitorReset.createSuccess')); emit('saved'); emit('close') } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) } finally { saving.value = false } }
 </script>
