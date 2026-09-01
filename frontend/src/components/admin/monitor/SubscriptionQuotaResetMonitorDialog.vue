@@ -54,10 +54,10 @@
         </div>
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
-        <label class="flex items-center gap-2"><input v-model="form.reset_weekly" type="checkbox" /> {{ t('admin.channelMonitorReset.weekly') }}</label>
-        <label class="flex items-center gap-2"><input v-model="form.reset_daily" type="checkbox" /> {{ t('admin.channelMonitorReset.daily') }}</label>
-        <label class="flex items-center gap-2"><input v-model="form.reset_monthly" type="checkbox" /> {{ t('admin.channelMonitorReset.monthly') }}</label>
-        <label class="flex items-center gap-2"><input v-model="form.reset_five_hour" type="checkbox" /> {{ t('admin.channelMonitorReset.fiveHour') }}</label>
+        <label class="flex items-center gap-2"><input v-model="form.reset_weekly" type="checkbox" @change="normalizeResetWindows" /> {{ t('admin.channelMonitorReset.weekly') }}</label>
+        <label class="flex items-center gap-2"><input v-model="form.reset_daily" type="checkbox" @change="normalizeResetWindows" /> {{ t('admin.channelMonitorReset.daily') }}</label>
+        <label class="flex items-center gap-2"><input v-model="form.reset_monthly" type="checkbox" @change="normalizeResetWindows" /> {{ t('admin.channelMonitorReset.monthly') }}</label>
+        <label class="flex items-center gap-2"><input v-model="form.reset_five_hour" type="checkbox" @change="normalizeResetWindows" /> {{ t('admin.channelMonitorReset.fiveHour') }}</label>
       </div>
       <label class="flex items-center gap-2"><input v-model="form.credit_policy" type="checkbox" true-value="propagate" false-value="ignore" /> {{ t('admin.channelMonitorReset.creditPolicy') }}</label>
       <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
@@ -95,6 +95,11 @@ const subscriptionOptions = ref<UserSubscription[]>([])
 const form = reactive<MonitorParams>({ name: '', enabled: false, execution_enabled: false, interval_seconds: 600, drop_threshold_percent: 1, credit_policy: 'ignore', reset_daily: false, reset_weekly: true, reset_monthly: false, reset_five_hour: false, account_ids: [], subscription_ids: [] })
 const selectedAccountLabel = computed(() => form.account_ids.length ? form.account_ids.join(', ') : t('admin.channelMonitorReset.selectAccounts'))
 const selectedSubscriptionLabel = computed(() => form.subscription_ids.length ? form.subscription_ids.join(', ') : t('admin.channelMonitorReset.selectSubscriptions'))
+function normalizeResetWindows() {
+  if (form.reset_monthly) form.reset_weekly = true
+  if (form.reset_weekly) form.reset_daily = true
+  if (form.reset_daily) form.reset_five_hour = true
+}
 async function loadOptions() {
   optionsLoading.value = true
   try {

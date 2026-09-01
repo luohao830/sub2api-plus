@@ -245,10 +245,30 @@ func validateMonitor(m *SubscriptionQuotaResetMonitor) error {
 	if m.CreditPolicy != MonitorCreditPolicyIgnore && m.CreditPolicy != MonitorCreditPolicyPropagate {
 		return ErrQuotaResetMonitorInvalid
 	}
+	normalizeMonitorResetWindows(m)
 	if !m.ResetDaily && !m.ResetWeekly && !m.ResetMonthly && !m.ResetFiveHour {
 		return ErrQuotaResetMonitorInvalid
 	}
 	return nil
+}
+
+// normalizeMonitorResetWindows keeps the local subscription windows aligned
+// with the upstream seven-day reset observed by this monitor. A longer window
+// reset necessarily clears its shorter child windows as well. This applies only
+// to monitor rules; manual administrator resets retain independent selection.
+func normalizeMonitorResetWindows(m *SubscriptionQuotaResetMonitor) {
+	if m == nil {
+		return
+	}
+	if m.ResetMonthly {
+		m.ResetWeekly = true
+	}
+	if m.ResetWeekly {
+		m.ResetDaily = true
+	}
+	if m.ResetDaily {
+		m.ResetFiveHour = true
+	}
 }
 
 func uniquePositiveIDs(values []int64) []int64 {
