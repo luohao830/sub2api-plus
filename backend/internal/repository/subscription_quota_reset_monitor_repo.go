@@ -62,7 +62,7 @@ func (r *subscriptionQuotaResetMonitorRepository) Get(ctx context.Context, id in
 }
 
 func (r *subscriptionQuotaResetMonitorRepository) Create(ctx context.Context, m *service.SubscriptionQuotaResetMonitor, actorID *int64) error {
-	return r.db.QueryRowContext(ctx, `INSERT INTO subscription_quota_reset_monitors (name,enabled,execution_enabled,interval_seconds,drop_threshold_percent,credit_policy,reset_daily,reset_weekly,reset_monthly,reset_five_hour,account_ids,subscription_ids,created_by,next_check_at) VALUES ($1,$2,FALSE,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()+($3 * INTERVAL '1 second')) RETURNING id,created_at,updated_at`, m.Name, m.Enabled, m.IntervalSeconds, m.DropThresholdPercent, m.CreditPolicy, m.ResetDaily, m.ResetWeekly, m.ResetMonthly, m.ResetFiveHour, pq.Array(m.AccountIDs), pq.Array(m.SubscriptionIDs), actorID).Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
+	return r.db.QueryRowContext(ctx, `INSERT INTO subscription_quota_reset_monitors (name,enabled,execution_enabled,interval_seconds,drop_threshold_percent,credit_policy,reset_daily,reset_weekly,reset_monthly,reset_five_hour,account_ids,subscription_ids,created_by,next_check_at) VALUES ($1,$2,$3,$4::int,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW()+($4::int * INTERVAL '1 second')) RETURNING id,created_at,updated_at`, m.Name, m.Enabled, m.ExecutionEnabled, m.IntervalSeconds, m.DropThresholdPercent, m.CreditPolicy, m.ResetDaily, m.ResetWeekly, m.ResetMonthly, m.ResetFiveHour, pq.Array(m.AccountIDs), pq.Array(m.SubscriptionIDs), actorID).Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
 }
 
 func (r *subscriptionQuotaResetMonitorRepository) Update(ctx context.Context, m *service.SubscriptionQuotaResetMonitor) error {
