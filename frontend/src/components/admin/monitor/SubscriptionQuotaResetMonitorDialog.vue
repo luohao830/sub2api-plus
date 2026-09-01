@@ -8,12 +8,38 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="input-label">{{ t('admin.channelMonitorReset.accounts') }}</label>
-          <input v-model="accountIDs" class="input" placeholder="25,31" required />
+          <div class="relative">
+            <button type="button" class="input flex w-full items-center justify-between text-left" @click="openDropdown = openDropdown === 'accounts' ? null : 'accounts'">
+              <span :class="form.account_ids.length ? 'text-gray-900 dark:text-white' : 'text-gray-400'">{{ selectedAccountLabel }}</span>
+              <span aria-hidden="true">⌄</span>
+            </button>
+            <div v-if="openDropdown === 'accounts'" class="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-dark-700 dark:bg-dark-800">
+              <p v-if="optionsLoading" class="px-2 py-2 text-xs text-gray-400">{{ t('common.loading') }}</p>
+              <label v-for="account in accountOptions" :key="account.id" class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700">
+                <input v-model="form.account_ids" type="checkbox" :value="account.id" />
+                <span>{{ account.id }} · {{ account.name }}</span>
+              </label>
+              <p v-if="!optionsLoading && !accountOptions.length" class="px-2 py-2 text-xs text-gray-400">{{ t('common.noOptionsFound') }}</p>
+            </div>
+          </div>
           <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitorReset.accountsHint') }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.channelMonitorReset.subscriptions') }}</label>
-          <input v-model="subscriptionIDs" class="input" placeholder="101,102" required />
+          <div class="relative">
+            <button type="button" class="input flex w-full items-center justify-between text-left" @click="openDropdown = openDropdown === 'subscriptions' ? null : 'subscriptions'">
+              <span :class="form.subscription_ids.length ? 'text-gray-900 dark:text-white' : 'text-gray-400'">{{ selectedSubscriptionLabel }}</span>
+              <span aria-hidden="true">⌄</span>
+            </button>
+            <div v-if="openDropdown === 'subscriptions'" class="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-dark-700 dark:bg-dark-800">
+              <p v-if="optionsLoading" class="px-2 py-2 text-xs text-gray-400">{{ t('common.loading') }}</p>
+              <label v-for="subscription in subscriptionOptions" :key="subscription.id" class="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700">
+                <input v-model="form.subscription_ids" type="checkbox" :value="subscription.id" />
+                <span>{{ subscription.id }} · {{ subscription.user?.email || `User #${subscription.user_id}` }}</span>
+              </label>
+              <p v-if="!optionsLoading && !subscriptionOptions.length" class="px-2 py-2 text-xs text-gray-400">{{ t('common.noOptionsFound') }}</p>
+            </div>
+          </div>
           <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitorReset.subscriptionsHint') }}</p>
         </div>
       </div>
@@ -55,16 +81,36 @@ import { adminAPI } from '@/api/admin'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import type { MonitorParams, SubscriptionQuotaResetMonitor } from '@/api/admin/subscriptionQuotaResetMonitor'
+import type { Account, UserSubscription } from '@/types'
 
 const props = defineProps<{ show: boolean; monitor?: SubscriptionQuotaResetMonitor | null }>()
 const emit = defineEmits<{ (event: 'close'): void; (event: 'saved'): void }>()
 const { t } = useI18n()
 const appStore = useAppStore()
 const saving = ref(false)
+const optionsLoading = ref(false)
+const openDropdown = ref<'accounts' | 'subscriptions' | null>(null)
+const accountOptions = ref<Account[]>([])
+const subscriptionOptions = ref<UserSubscription[]>([])
 const form = reactive<MonitorParams>({ name: '', enabled: false, execution_enabled: false, interval_seconds: 600, drop_threshold_percent: 1, credit_policy: 'ignore', reset_daily: false, reset_weekly: true, reset_monthly: false, reset_five_hour: false, account_ids: [], subscription_ids: [] })
-const accountIDs = computed({ get: () => form.account_ids.join(','), set: (value: string) => { form.account_ids = parseIDs(value) } })
-const subscriptionIDs = computed({ get: () => form.subscription_ids.join(','), set: (value: string) => { form.subscription_ids = parseIDs(value) } })
-function parseIDs(value: string): number[] { return value.split(',').map(item => Number(item.trim())).filter(item => Number.isInteger(item) && item > 0) }
+const selectedAccountLabel = computed(() => form.account_ids.length ? form.account_ids.join(', ') : t('admin.channelMonitorReset.selectAccounts'))
+const selectedSubscriptionLabel = computed(() => form.subscription_ids.length ? form.subscription_ids.join(', ') : t('admin.channelMonitorReset.selectSubscriptions'))
+async function loadOptions() {
+  optionsLoading.value = true
+  try {
+    const [accounts, subscriptions] = await Promise.all([
+      adminAPI.accounts.list(1, 100, { platform: 'openai', type: 'oauth', status: 'active', lite: 'true' }),
+      adminAPI.subscriptions.list(1, 100, { status: 'active', platform: 'openai' })
+    ])
+    accountOptions.value = accounts.items.filter(account => account.parent_account_id == null)
+    subscriptionOptions.value = subscriptions.items
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    optionsLoading.value = false
+  }
+}
 watch(() => props.monitor, monitor => { if (monitor) Object.assign(form, { ...monitor }); else Object.assign(form, { name: '', enabled: false, execution_enabled: false, interval_seconds: 600, drop_threshold_percent: 1, credit_policy: 'ignore', reset_daily: false, reset_weekly: true, reset_monthly: false, reset_five_hour: false, account_ids: [], subscription_ids: [] }) }, { immediate: true })
+watch(() => props.show, show => { if (show) { openDropdown.value = null; void loadOptions() } })
 async function submit() { if (!form.account_ids.length || !form.subscription_ids.length || (!form.reset_daily && !form.reset_weekly && !form.reset_monthly && !form.reset_five_hour)) return; saving.value = true; try { if (props.monitor) await adminAPI.subscriptionQuotaResetMonitor.update(props.monitor.id, form); else await adminAPI.subscriptionQuotaResetMonitor.create(form); appStore.showSuccess(t(props.monitor ? 'admin.channelMonitorReset.updateSuccess' : 'admin.channelMonitorReset.createSuccess')); emit('saved'); emit('close') } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) } finally { saving.value = false } }
 </script>
