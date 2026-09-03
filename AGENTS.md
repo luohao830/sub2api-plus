@@ -27,29 +27,6 @@
 |Upstream Merge:Preserve intentional Plus changes and update UPSTREAM.md in the same change.
 |Local Skill:skills/compress-cli
 |Skill Trigger:Use compress-cli when a request creates, compresses, validates, or updates AGENTS.md repository rules.
-
-## Fork Branch Architecture
-
-This fork distributes changes from `LuckyKuang/sub2api-plus`, which is based on
-`Wei-Shaw/sub2api`. Keep these branch roles stable:
-
-- `plus/main` in `luohao830/sub2api-plus` is a read-only mirror of
-  `LuckyKuang/sub2api-plus:main`; it contains no fork-specific changes.
-- `main` in `luohao830/sub2api-plus` is the fork integration and release branch.
-  Protect it and merge changes through pull requests.
-- `feature/*`, `fix/*`, and `hotfix/*` contain fork changes and target this
-  fork's `main` through pull requests.
-- `sync/*` starts from fork `main`, merges the latest `plus/main`, preserves
-  intentional fork changes, and targets fork `main` through a pull request.
-- `release/*` contains release metadata and notes; tag only the resulting
-  merged `main` commit after required checks pass.
-
-Pull requests intended for `LuckyKuang/sub2api-plus` must start from
-`plus/main` and contain only changes intended for Plus. Do not use the fork's
-integrated `main` as the base when it contains unrelated fork changes.
-
-The fork's `vX.Y.Z+custom.NNN` sequence is independent from Plus's sequence.
-Same-named tags in the two repositories do not conflict. After importing a new
-Plus custom release, increment the fork's next custom revision and record the
-exact Plus tag and commit, plus retained fork changes, in `UPSTREAM.md` and the
-GitHub Release notes.
+|Fork Branch Architecture:In luohao830/sub2api-plus, plus/main is a read-only mirror of LuckyKuang/sub2api-plus:main and contains no fork changes; main is the protected fork integration/release branch; feature/*, fix/*, and hotfix/* target fork main through PRs; sync/* merges plus/main into fork main through PRs; release/* contains release metadata only and tags merged main commits after checks.
+|Fork Upstream PRs:PRs intended for LuckyKuang/sub2api-plus start from plus/main and contain only Plus-intended changes, never unrelated fork main changes.
+|Fork Versioning:The fork vX.Y.Z+custom.NNN sequence is independent from Plus; same-named tags do not conflict. After importing a newer Plus custom release, increment the fork custom revision and record the exact Plus tag, commit, and retained fork changes in UPSTREAM.md and GitHub Release notes.
