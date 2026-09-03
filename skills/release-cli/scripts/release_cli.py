@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import shutil
@@ -126,6 +127,18 @@ def run_command(
     timeout: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     actual_cwd = ROOT if cwd is None else cwd
+    command_env = None
+    # Keep captured GitHub CLI JSON machine-readable even when the caller's
+    # shell forces terminal formatting.
+    if command and str(command[0]) == "gh":
+        command_env = os.environ.copy()
+        command_env.update(
+            {
+                "GH_FORCE_TTY": "0",
+                "NO_COLOR": "1",
+                "CLICOLOR": "0",
+            }
+        )
     try:
         return subprocess.run(
             [str(item) for item in command],
@@ -134,6 +147,7 @@ def run_command(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=command_env,
             stdout=subprocess.PIPE if capture else None,
             stderr=subprocess.STDOUT if capture else None,
             timeout=timeout,
@@ -722,23 +736,40 @@ def pull_request_details(repository: str, number: int) -> PullRequest:
             "--repo",
             repository,
             "--json",
-            "number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,mergeStateStatus,mergeCommit,autoMergeRequest,body,url",
+            "number,state,isDraft,baseRefName,headRefName,headRefOid,headRepositoryOwner,mergeStateStatus,mergeCommit,autoMergeRequest,body,url",
         ],
         description="gh pr view",
     )
     if not isinstance(data, dict):
         raise ReleaseCliError("gh pr view returned an unexpected value")
+    try:
+        number_value = int(data["number"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ReleaseCliError("gh pr view returned incomplete metadata") from error
+    base_oid = capture(
+        [
+            "gh",
+            "api",
+            f"repos/{repository}/pulls/{number_value}",
+            "--jq",
+            ".base.sha",
+        ]
+    )
+    if not re.fullmatch(r"[0-9a-f]{40}", base_oid):
+        raise ReleaseCliError(
+            f"GitHub returned an invalid base commit for pull request #{number_value}"
+        )
     owner = data.get("headRepositoryOwner")
     head_owner = str(owner.get("login", "")) if isinstance(owner, dict) else ""
     merge = data.get("mergeCommit")
     merge_commit = str(merge.get("oid")) if isinstance(merge, dict) and merge.get("oid") else None
     try:
         return PullRequest(
-            number=int(data["number"]),
+            number=number_value,
             state=str(data["state"]),
             is_draft=bool(data["isDraft"]),
             base_branch=str(data["baseRefName"]),
-            base_oid=str(data["baseRefOid"]),
+            base_oid=base_oid,
             head_branch=str(data["headRefName"]),
             head_oid=str(data["headRefOid"]),
             head_owner=head_owner,
