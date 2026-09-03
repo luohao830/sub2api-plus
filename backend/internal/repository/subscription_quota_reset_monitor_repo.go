@@ -226,7 +226,7 @@ func (r *subscriptionQuotaResetMonitorRepository) ListActionableEvents(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]*service.SubscriptionQuotaResetMonitorEvent, 0)
 	for rows.Next() {
 		event, scanErr := scanEvent(rows)
