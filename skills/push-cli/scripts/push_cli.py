@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import os
 import platform
 import re
 import shlex
@@ -27,7 +28,7 @@ if str(TOOLS) not in sys.path:
 import validation_runtime
 
 DEFAULT_REMOTE = "origin"
-EXPECTED_REPOSITORY = "LuckyKuang/sub2api-plus"
+EXPECTED_REPOSITORY = "luohao830/sub2api-plus"
 LOCAL_VALIDATION_CONTEXT = "sub2api/local-validation"
 FULL_PROFILE = "full"
 FINALIZATION_PROFILE = "release-finalization"
@@ -91,6 +92,17 @@ def run_command(
     merge_stderr: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     actual_cwd = ROOT if cwd is None else cwd
+    command_env = None
+    # Keep captured GitHub CLI JSON free of terminal formatting.
+    if command and str(command[0]) == "gh":
+        command_env = os.environ.copy()
+        command_env.update(
+            {
+                "GH_FORCE_TTY": "0",
+                "NO_COLOR": "1",
+                "CLICOLOR": "0",
+            }
+        )
     try:
         return subprocess.run(
             [str(item) for item in command],
@@ -99,6 +111,7 @@ def run_command(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=command_env,
             stdout=subprocess.PIPE if capture else None,
             stderr=(subprocess.STDOUT if merge_stderr else subprocess.PIPE)
             if capture
@@ -139,7 +152,7 @@ def require_command(command: str) -> None:
 def repo_from_remote(url: str) -> str:
     match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url.strip())
     if not match:
-        raise PushCliError(f"origin is not a GitHub repository URL: {url}")
+        raise PushCliError(f"remote is not a GitHub repository URL: {url}")
     return f"{match.group(1)}/{match.group(2)}"
 
 
@@ -164,7 +177,7 @@ def github_gate(remote: str) -> str:
     repository = repo_from_remote(remote_url)
     if repository != EXPECTED_REPOSITORY:
         raise PushCliError(
-            f"origin resolves to {repository}; expected {EXPECTED_REPOSITORY}"
+            f"remote resolves to {repository}; expected {EXPECTED_REPOSITORY}"
         )
 
     capture(["gh", "repo", "view", repository, "--json", "nameWithOwner"])

@@ -37,6 +37,7 @@ import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
 import ipAccessControlAPI from './ipAccessControl'
 import pluginsAPI from './plugins'
+import subscriptionQuotaResetMonitorAPI from './subscriptionQuotaResetMonitor'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   audit: auditAPI,
   ipAccessControl: ipAccessControlAPI,
-  plugins: pluginsAPI
+  plugins: pluginsAPI,
+  subscriptionQuotaResetMonitor: subscriptionQuotaResetMonitorAPI
 }
 
 export {

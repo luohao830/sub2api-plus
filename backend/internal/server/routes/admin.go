@@ -124,6 +124,7 @@ func RegisterAdminRoutes(
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h, settingService)
 		registerChannelMonitorV2Routes(admin, h, settingService)
+		registerSubscriptionQuotaResetMonitorRoutes(admin, h)
 
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
@@ -890,6 +891,18 @@ func registerChannelMonitorV2Routes(admin *gin.RouterGroup, h *handler.Handlers,
 			reads.GET("/errors", h.ChannelMonitorV2.Errors)
 			reads.GET("/users", h.ChannelMonitorV2.AdminUsers)
 		}
+	}
+}
+
+func registerSubscriptionQuotaResetMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	monitors := admin.Group("/subscription-quota-reset-monitors")
+	{
+		monitors.GET("", h.Admin.SubscriptionQuotaResetMonitor.List)
+		monitors.POST("", h.Admin.SubscriptionQuotaResetMonitor.Create)
+		monitors.GET("/:id", h.Admin.SubscriptionQuotaResetMonitor.Get)
+		monitors.PUT("/:id", h.Admin.SubscriptionQuotaResetMonitor.Update)
+		monitors.POST("/:id/check", h.Admin.SubscriptionQuotaResetMonitor.Check)
+		monitors.GET("/:id/events", h.Admin.SubscriptionQuotaResetMonitor.Events)
 	}
 }
 

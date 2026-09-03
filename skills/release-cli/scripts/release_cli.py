@@ -18,7 +18,7 @@ from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REMOTE = "origin"
-EXPECTED_REPOSITORY = "LuckyKuang/sub2api-plus"
+EXPECTED_REPOSITORY = "luohao830/sub2api-plus"
 LOCAL_VALIDATION_CONTEXT = "sub2api/local-validation"
 FULL_PROFILE = "full"
 FINALIZATION_PROFILE = "release-finalization"
@@ -176,7 +176,7 @@ def require_command(command: str) -> None:
 def repo_from_remote(url: str) -> str:
     match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url.strip())
     if not match:
-        raise ReleaseCliError(f"origin is not a GitHub repository URL: {url}")
+        raise ReleaseCliError(f"remote is not a GitHub repository URL: {url}")
     return f"{match.group(1)}/{match.group(2)}"
 
 
@@ -198,7 +198,7 @@ def github_gate(remote: str) -> str:
     repository = repo_from_remote(capture(["git", "remote", "get-url", remote]))
     if repository != EXPECTED_REPOSITORY:
         raise ReleaseCliError(
-            f"origin resolves to {repository}; expected {EXPECTED_REPOSITORY}"
+            f"remote resolves to {repository}; expected {EXPECTED_REPOSITORY}"
         )
     capture(["gh", "repo", "view", repository, "--json", "nameWithOwner"])
     push_permission = capture(

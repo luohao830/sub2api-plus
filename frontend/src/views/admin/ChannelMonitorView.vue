@@ -11,11 +11,11 @@
           {{ t('admin.channelMonitor.title') }}
         </h1>
         <p class="page-description mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-          {{
-            isV1Mode
+          {{ adminMonitorTab === 'quota-reset'
+            ? t('admin.channelMonitorReset.description')
+            : isV1Mode
               ? t('channelMonitorV2.admin.descriptionV1')
-              : t('channelMonitorV2.admin.descriptionV2')
-          }}
+              : t('channelMonitorV2.admin.descriptionV2') }}
         </p>
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
           <div
@@ -43,13 +43,23 @@
             >
               {{ isV1Mode ? t('channelMonitorV2.admin.tabV1Active') : t('channelMonitorV2.admin.tabV1History') }}
             </button>
+            <button
+              type="button"
+              role="tab"
+              class="tab flex-1 sm:flex-none"
+              :class="adminMonitorTab === 'quota-reset' ? 'tab-active' : ''"
+              :aria-selected="adminMonitorTab === 'quota-reset'"
+              @click="adminMonitorTab = 'quota-reset'"
+            >
+              {{ t('admin.channelMonitorReset.tab') }}
+            </button>
           </div>
         </div>
       </header>
 
       <MonitorSettingsPanel v-if="adminMonitorTab === 'v2'" />
 
-      <TablePageLayout v-else>
+      <TablePageLayout v-else-if="adminMonitorTab === 'legacy'">
       <template #filters>
         <MonitorFiltersBar
           v-model:search="searchQuery"
@@ -134,6 +144,8 @@
         />
       </template>
       </TablePageLayout>
+
+      <SubscriptionQuotaResetMonitorPanel v-else />
     </div>
 
     <MonitorFormDialog
@@ -199,12 +211,13 @@ import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vu
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
+import SubscriptionQuotaResetMonitorPanel from '@/components/admin/monitor/SubscriptionQuotaResetMonitorPanel.vue'
 import { isChannelMonitorV1Mode } from '@/utils/featureFlags'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const isV1Mode = computed(() => isChannelMonitorV1Mode())
-const adminMonitorTab = ref<'v2' | 'legacy'>(isChannelMonitorV1Mode() ? 'legacy' : 'v2')
+const adminMonitorTab = ref<'v2' | 'legacy' | 'quota-reset'>(isChannelMonitorV1Mode() ? 'legacy' : 'v2')
 const {
   providerLabel,
   providerBadgeClass,

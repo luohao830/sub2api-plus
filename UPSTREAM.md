@@ -59,7 +59,7 @@ still require a maintainer audit. Do not reuse or retag `.007`.
 ```text
 Git/GitHub: v0.1.183+custom.004
 Application: 0.1.183+custom.004
-GHCR: ghcr.io/luckykuang/sub2api-plus:v0.1.183-custom.004
+GHCR: ghcr.io/luohao830/sub2api-plus:v0.1.183-custom.004
 ```
 
 ## Naming
@@ -74,17 +74,21 @@ after importing a newer official release.
 
 ## Distribution and Repository Roles
 
-- `origin` is the custom repository:
+- `origin` is the fork distribution repository:
+  `https://github.com/luohao830/sub2api-plus.git`.
+- `plus` is the read-only Plus source:
   `https://github.com/LuckyKuang/sub2api-plus.git`.
 - `upstream` is the official source:
   `https://github.com/Wei-Shaw/sub2api.git`.
-- Installation, update, rollback, and release links use the custom repository.
-- The official repository is an input for maintainers, not a distribution
-  source for Sub2API Plus.
+- The `plus/main` branch mirrors `LuckyKuang/sub2api-plus:main` and is
+  synchronized into the protected fork `main` through a reviewed PR.
+- Installation, update, rollback, and release links use the fork repository.
+- Plus and official repositories are inputs for maintainers, not distribution
+  sources for this fork.
 
-Local clones may need to add the `upstream` remote before an upstream sync.
-Preserve intentional Plus changes during merges and update this mapping in the
-same release-preparation change.
+Local clones should configure `origin` as the fork and `plus` as the Plus
+source before an upstream sync. Preserve intentional fork changes during
+merges and update this mapping in the same release-preparation change.
 
 Historical `-custom.NNN` Git naming was migrated to the canonical
 `+custom.NNN` form. OCI tags continue to use `-custom.NNN` because OCI tags do

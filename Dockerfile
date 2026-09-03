@@ -113,7 +113,7 @@ ARG VERSION=0.1.183+custom.004
 # Labels
 LABEL maintainer="LuckyKuang <https://github.com/luckykuang>"
 LABEL description="Sub2API Plus - AI API Gateway Platform"
-LABEL org.opencontainers.image.source="https://github.com/luckykuang/sub2api-plus"
+LABEL org.opencontainers.image.source="https://github.com/luohao830/sub2api-plus"
 LABEL org.opencontainers.image.licenses="LGPL-3.0-or-later"
 LABEL org.opencontainers.image.version="${VERSION}"
 
