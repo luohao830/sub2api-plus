@@ -41,7 +41,7 @@ func (r *subscriptionQuotaResetMonitorRepository) List(ctx context.Context) ([]*
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]*service.SubscriptionQuotaResetMonitor, 0)
 	for rows.Next() {
 		item, err := scanMonitor(rows)
@@ -165,7 +165,7 @@ func (r *subscriptionQuotaResetMonitorRepository) ListEvents(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]*service.SubscriptionQuotaResetMonitorEvent, 0)
 	for rows.Next() {
 		e, err := scanEvent(rows)
@@ -182,7 +182,7 @@ func (r *subscriptionQuotaResetMonitorRepository) ListEventTargets(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]*service.SubscriptionQuotaResetMonitorEventTarget, 0)
 	for rows.Next() {
 		var t service.SubscriptionQuotaResetMonitorEventTarget
