@@ -17,6 +17,37 @@ put commands, examples, and explanations in the linked documents.
 
 Do not duplicate current tool or release versions here.
 
+## Repository and Branch Architecture
+
+This fork is an independent distribution of `LuckyKuang/sub2api-plus`, which
+itself is based on `Wei-Shaw/sub2api`. Keep the repository roles and branch
+boundaries below stable:
+
+- `plus/main` in `luohao830/sub2api-plus` is a read-only mirror of
+  `LuckyKuang/sub2api-plus:main`. It contains no fork-specific changes and is
+  used as the comparison and synchronization baseline.
+- `main` in `luohao830/sub2api-plus` is the fork's integration and release
+  branch. It contains the selected Plus baseline plus fork-specific changes.
+  Protect it; never develop directly or push release commits to it.
+- `feature/*`, `fix/*`, and `hotfix/*` are fork development branches and must
+  enter this fork's `main` through pull requests.
+- `sync/*` branches start from this fork's `main`, merge the latest
+  `plus/main`, preserve intentional fork changes, and enter `main` through a
+  pull request.
+- `release/*` branches contain only release metadata and notes. Tag only the
+  resulting merged `main` commit after required checks pass.
+
+Pull requests targeting `LuckyKuang/sub2api-plus` must start from `plus/main`
+and contain only changes intended for Plus. Do not use the fork's integrated
+`main` as the base for an upstream contribution when it contains unrelated
+fork changes.
+
+The fork's `vX.Y.Z+custom.NNN` sequence is independent from Plus's sequence.
+Same-named tags in the two repositories do not conflict. When a newer Plus
+custom release is merged, increment the fork's next custom revision and record
+the exact Plus tag and commit, along with retained fork changes, in `UPSTREAM.md`
+and the GitHub Release notes.
+
 ## Change Rules
 
 - Use pnpm only; update `frontend/pnpm-lock.yaml` with dependency changes.
