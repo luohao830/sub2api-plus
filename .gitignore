@@ -1,4 +1,5 @@
-docs/claude-relay-service/
+# 本地杂项文档、测试数据和外部项目副本
+/docs-local/
 .codex
 
 # ===================
@@ -118,6 +119,8 @@ backend/.installed
 tests
 !deploy/tests/
 !deploy/tests/**
+!skills/compress-cli/tests/
+!skills/compress-cli/tests/**
 !skills/push-cli/tests/
 !skills/push-cli/tests/**
 !skills/release-cli/tests/
@@ -127,12 +130,14 @@ CLAUDE.md
 scripts
 !backend/scripts/
 !backend/scripts/resolve-version.sh
+!skills/compress-cli/scripts/
+!skills/compress-cli/scripts/**
 !skills/push-cli/scripts/
 !skills/push-cli/scripts/**
 !skills/release-cli/scripts/
 !skills/release-cli/scripts/**
 .code-review-state
-#openspec/
+/openspec/changes/
 code-reviews/
 backend/cmd/server/server
 deploy/docker-compose.override.yml
@@ -145,17 +150,26 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/SECURITY_AUDIT_CONTENT_COVERAGE.md
+!docs/BATCH_IMAGE_MVP.md
+!docs/COMPOSITE_GROUPS.md
+!docs/PLUGIN_DEVELOPMENT.md
+!docs/channel-monitor-v2-safe-defaults.md
 !docs/providers/
 !docs/providers/*.md
 !docs/protocols/
 !docs/protocols/*.md
 !docs/legal/
 !docs/legal/*.md
+!docs/screenshots/
+docs/screenshots/*
+!docs/screenshots/mobile-account-actions-menu.png
 .serena/
 .codex/
 frontend/coverage/
 aicodex
 output/
+.codegraph/
 
 # Vitest / Vite cache at repo root
 .vite/
@@ -165,3 +179,6 @@ output/
 # Keep Python interpreter caches ignored after all allowlist rules above.
 __pycache__/
 *.py[cod]
+
+# 本地闭源插件开发目录及构建产物不进入 Sub2API Plus 仓库
+/plugins/

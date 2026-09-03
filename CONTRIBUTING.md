@@ -21,7 +21,21 @@ pnpm --dir frontend install --frozen-lockfile
 
 ## Development Checks
 
-With GNU Make available, run the repository checks from the root:
+All validation, including focused checks while iterating, must run in the
+platform validation container: Apple Containers on macOS, Docker inside WSL2
+Debian or Ubuntu on Windows, and Docker on Linux. Do not run tests, lint,
+typechecking, builds, policy checks, or other validation on the host.
+After every validation attempt, successful or failed, remove the one-shot
+project validation container, temporary resources, and historical writable
+snapshots. Retain the Sub2API validation image whose deterministic identity
+matches the current resolved Go, Node, pnpm, golangci-lint, and GoReleaser pins.
+Retain dependency caches only for the generation matching that image and the
+current Go and pnpm lock inputs. Remove stale Sub2API validation generations;
+never prune unrelated projects or global runtime, builder, image, volume, or
+system resources.
+
+Inside that container, with GNU Make available, run the repository checks from
+the root:
 
 ```bash
 make test
@@ -41,9 +55,14 @@ golangci-lint run ./...
 pnpm --dir frontend run lint:check
 pnpm --dir frontend run typecheck
 pnpm --dir frontend run test:run
+
+# Repository AGENTS.md contract
+python3 skills/compress-cli/scripts/compress_cli.py check AGENTS.md
+python3 skills/compress-cli/tests/test_compress_cli.py
 ```
 
-Run the focused tests for the changed package or component while iterating.
+Run the focused tests for the changed package or component inside the same
+platform validation container while iterating.
 Intermediate branch pushes use the fast path and do not run local tests:
 
 ```bash
@@ -56,12 +75,19 @@ Before creating or updating the final pull request, run the promotion gate:
 python3 skills/push-cli/scripts/push_cli.py submit-pr
 ```
 
-`submit-pr` requires the latest default-branch base and runs the full matrix
-inside Apple Containers on macOS, Docker inside WSL2 Debian or Ubuntu on
-Windows, and Docker on Linux. Host-side execution of that matrix is forbidden.
-It pushes the validated head, publishes the exact base/head proof, and creates
-or reuses the pull request. Release PR merging and publication use
-`skills/release-cli` after GitHub required checks pass.
+`submit-pr` defaults to the `full` profile. It requires the latest
+default-branch base and runs the complete matrix inside Apple Containers on
+macOS, Docker inside WSL2 Debian or Ubuntu on Windows, and Docker on Linux.
+Independent backend-test, backend-lint/policy, and frontend lanes run with
+bounded concurrency and report step/lane wall-clock durations; no check is
+removed. Host-side execution of any validation is forbidden. For diagnosis or a
+same-commit timing baseline, pass `--serial` to `check`.
+
+The `release-finalization` profile is not a general fast option. Only
+`release-cli finalize` may request it for a verified published tag and a tree
+that can be regenerated exactly from its recorded base. Both profiles bind the
+exact base/head SHAs, and finalization also binds the tag. Release PR merging
+and publication use `skills/release-cli` after GitHub required checks pass.
 
 ## Generated Code
 
@@ -90,9 +116,15 @@ numeric prefix and create a forward-only migration.
 
 ## Specifications
 
-Create or update an OpenSpec change for cross-cutting features or changes to
-public APIs, persistent data, security boundaries, or multi-module behavior.
-Small fixes and documentation-only changes do not require a new proposal.
+Use a local OpenSpec change to plan cross-cutting features or changes to public
+APIs, persistent data, security boundaries, or multi-module behavior. The
+`openspec/changes/` directory is intentionally untracked and must not be
+included in pull requests. Start from the tracked example under
+`openspec/examples/` when useful.
+
+Record durable behavior in the owning documentation and automated tests. Use
+pull request descriptions and commit history for change rationale. Small fixes
+and documentation-only changes do not require an OpenSpec plan.
 
 ## Pull Requests
 

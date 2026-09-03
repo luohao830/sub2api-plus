@@ -1,135 +1,32 @@
-# Repository Instructions
-
-These rules apply to the whole repository. Keep this file normative and short;
-put commands, examples, and explanations in the linked documents.
-
-## Sources of Truth
-
-- App version: `backend/cmd/server/VERSION`
-- Go toolchain: `backend/go.mod`
-- Node.js/pnpm toolchain: `frontend/package.json`
-- Release/lint tools: `.tool-versions`
-- Development and checks: `CONTRIBUTING.md`
-- Releases: `docs/RELEASING.md`
-- Upstream mapping/status: `UPSTREAM.md`
-- Database migrations: `backend/migrations/README.md`
-- Deployment and security: `deploy/`
-
-Do not duplicate current tool or release versions here.
-
-## Repository and Branch Architecture
-
-This fork is an independent distribution of `LuckyKuang/sub2api-plus`, which
-itself is based on `Wei-Shaw/sub2api`. Keep the repository roles and branch
-boundaries below stable:
-
-- `plus/main` in `luohao830/sub2api-plus` is a read-only mirror of
-  `LuckyKuang/sub2api-plus:main`. It contains no fork-specific changes and is
-  used as the comparison and synchronization baseline.
-- `main` in `luohao830/sub2api-plus` is the fork's integration and release
-  branch. It contains the selected Plus baseline plus fork-specific changes.
-  Protect it; never develop directly or push release commits to it.
-- `feature/*`, `fix/*`, and `hotfix/*` are fork development branches and must
-  enter this fork's `main` through pull requests.
-- `sync/*` branches start from this fork's `main`, merge the latest
-  `plus/main`, preserve intentional fork changes, and enter `main` through a
-  pull request.
-- `release/*` branches contain only release metadata and notes. Tag only the
-  resulting merged `main` commit after required checks pass.
-
-Pull requests targeting `LuckyKuang/sub2api-plus` must start from `plus/main`
-and contain only changes intended for Plus. Do not use the fork's integrated
-`main` as the base for an upstream contribution when it contains unrelated
-fork changes.
-
-The fork's `vX.Y.Z+custom.NNN` sequence is independent from Plus's sequence.
-Same-named tags in the two repositories do not conflict. When a newer Plus
-custom release is merged, increment the fork's next custom revision and record
-the exact Plus tag and commit, along with retained fork changes, in `UPSTREAM.md`
-and the GitHub Release notes.
-
-## Change Rules
-
-- Use pnpm only; update `frontend/pnpm-lock.yaml` with dependency changes.
-- Do not edit generated Ent/Wire files. After schema changes, regenerate both
-  and commit the output.
-- When a Go interface changes, update all implementations, stubs, and mocks.
-- Existing SQL migrations are immutable and forward-only. New files use a
-  unique increasing prefix; `_notx.sql` is only for concurrent indexes.
-- New configuration fields need defaults or environment bindings, tests, and
-  synchronized examples under `deploy/`.
-- Update provider/protocol docs for endpoint, auth, billing, quota, scheduling,
-  default, or error-behavior changes.
-- Keep README core section IDs and links aligned across all three languages.
-  Put details under `docs/` or `deploy/`, not in README files.
-- Keep frontend English and Chinese locale keys aligned.
-- Codex outbound identity source precedence is immutable: a valid
-  credential-owning account `credentials.user_agent` > a valid global
-  `openai_codex_user_agent` > the compiled default. Empty or invalid candidates
-  fall through only to the next source, and the compiled default is the final
-  fallback. Version synchronization may update only the version declarations
-  of the selected identity; it must not change the selected source, client
-  family, Originator, OS, architecture, or terminal fingerprint. Inbound
-  headers, generic header overrides, request classification, retries, probes,
-  and upstream merges must not bypass this precedence. Keep User-Agent,
-  Originator, and Version coherent, and update the source-priority matrix,
-  exact default identity, and all outbound-path tests with every identity
-  change.
-- Use OpenSpec for cross-cutting public API, persistent-data, security-boundary,
-  or multi-module changes; small fixes and docs-only changes need none.
-- Never commit credentials, tokens, production configuration, or user data.
-- Document only commands that exist in repository scripts or Make targets.
-
-## Implementation Principles
-
-- When current requirements replace behavior, remove the obsolete code. Do not
-  retain backward compatibility, shims, legacy fallbacks, or migrations solely
-  to preserve superseded behavior. This does not override requirements stated
-  elsewhere in this file.
-- Choose the simplest design that satisfies current requirements. Do not add
-  speculative abstractions, configuration layers, or extensibility.
-- First deliver the smallest runnable end-to-end implementation. Add layers or
-  complexity only when a working flow demonstrates the need; do not replace
-  working code to anticipate unfinished complexity.
-- Keep components modular, with clear ownership and separation of concerns.
-- Prefer maintained, established libraries over custom implementations unless
-  there is a concrete reason not to.
-- Inspect existing dependencies and project patterns before adding packages or
-  writing custom infrastructure.
-- Choose designs that meet known long-term requirements. Do not adopt a
-  temporary solution that is knowingly intended to be replaced later.
-- For architectural, public-interface, security-boundary, and other high-impact
-  decisions, prefer proven patterns from mature products and maintained
-  libraries over novel designs.
-
-## Verification
-
-Run focused checks from `CONTRIBUTING.md` while iterating. Ordinary branch
-pushes use the fast `skills/push-cli push` path and must never target the
-repository default branch. The final PR submission must use
-`skills/push-cli submit-pr`; only that action runs the official local matrix
-inside Apple Containers on macOS, Docker inside WSL2 Debian or Ubuntu on
-Windows, and Docker on Linux. Host-side execution of that matrix is forbidden.
-Release promotion must use `skills/release-cli`, the exact submit-pr base/head
-proof, protected GitHub auto-merge without admin bypass, and successful PR and
-merged-main Actions. Release metadata validation must not repeat the complete
-local application matrix.
-Backend changes need relevant Go tests; frontend changes need lint, typecheck,
-and relevant Vitest coverage; locale, deployment, migration, and release
-changes need their dedicated checks.
-
-## Releases
-
-- Per-release changes belong in GitHub Release notes, not README files.
-- Tag, embedded version, Docker build args, and `UPSTREAM.md` must agree.
-- Release notes must cover compatibility, known issues, and upstream baseline.
-- Never reuse or retag a published version.
-- Never push or commit release changes directly to `main`; preparation and
-  post-publication status changes must arrive through separate PRs.
-- Tag only the actual PR merge commit after its exact `main` push Actions pass.
-- Keep tag publication, Release monitoring, verification, and finalization as
-  separate resumable actions.
-- Do not create, move, delete, or push tags, Releases, or images without an
-  explicit publication request.
-- Preserve intentional Plus changes during upstream merges and update
-  `UPSTREAM.md` in the same change.
+# AGENTS.md
+|Scope:Repository-wide|Keep this file normative and short|Put commands, examples, and explanations in linked sources of truth.
+|Sources:App version=backend/cmd/server/VERSION|Go=backend/go.mod|Node/pnpm=frontend/package.json|release/lint=.tool-versions|development/checks=CONTRIBUTING.md|releases=docs/RELEASING.md|upstream=UPSTREAM.md|migrations=backend/migrations/README.md|deployment/security=deploy/|Do not duplicate current versions here.
+|Dependencies:Use pnpm only|Update frontend/pnpm-lock.yaml for dependency changes|Inspect existing dependencies and project patterns before adding packages or infrastructure.
+|Generated Code:Do not edit generated Ent/Wire files|After schema changes regenerate both and commit output.
+|Interfaces:When a Go interface changes, update every implementation, stub, and mock.
+|Migrations:Existing SQL migrations are immutable and forward-only|Use a unique increasing prefix|Use _notx.sql only for concurrent indexes.
+|Configuration:New fields require defaults or environment bindings, tests, and synchronized deploy/ examples.
+|Protocol Documentation:Update provider/protocol docs for endpoint, auth, billing, quota, scheduling, default, or error-behavior changes.
+|README:Keep core section IDs and links aligned across README.md, README_CN.md, and README_JA.md|Put details under docs/ or deploy/.
+|Locales:Keep frontend English and Chinese locale keys aligned.
+|Codex Identity:Source precedence is immutable: valid credential-owning account credentials.user_agent > valid global openai_codex_user_agent > compiled default|Empty/invalid candidates fall through only to the next source|Version sync may update only selected identity version declarations and must not change source, client family, Originator, OS, architecture, or terminal fingerprint|Inbound headers, generic overrides, request classification, retries, probes, and upstream merges must not bypass precedence|Keep User-Agent, Originator, and Version coherent|Every identity change updates the source-priority matrix, exact default identity, and all outbound-path tests.
+|Security Audit:Ingress audit ordering is an immutable security boundary|Every accepted HTTP/WS request or turn must enter security audit after auth/basic validation but before account selection, billing, concurrency acquisition, upstream writes, or other side effects|API-key/OAuth account type, session affinity, routing, retries, probes, protocol adapters, transforms, request classification, and upstream merges must not bypass this boundary|Content Moderation and Prompt Audit must consume the same canonical protocol extraction contract|Extraction compatibility follows v0.1.177+custom.003: unknown item types, unknown Responses/Live frames, unknown sibling fields, valid-JSON unrecognized structures, and other incomplete or unextractable content pass through without an audit-derived block|Successfully extracted sibling content remains auditable|Extraction failures must not become policy violations, unavailable decisions, HTTP 503 responses, or WebSocket closes|Every extraction, evaluation, or audit-dependency exception must emit a structured log with request ID, endpoint, protocol, stage, stable error code/reason, and available byte counts, without raw content, credentials, or unsanitized user fields|Invalid syntax remains the endpoint basic-validation responsibility|Every endpoint, payload, or tool-field change must update docs/SECURITY_AUDIT_CONTENT_COVERAGE.md, real-payload semantic tests for both engines, and HTTP/WS/account-type pass-through and side-effect-order tests.
+|OpenSpec:Use local untracked openspec/changes/ plans for cross-cutting public API, persistent-data, security-boundary, or multi-module changes|Do not commit openspec/changes/|Commit durable behavior to the owning documentation and tests|Small fixes and docs-only changes need none.
+|Secrets:Never commit credentials, tokens, production configuration, or user data.
+|Documented Commands:Only document commands that exist in repository scripts or Make targets.
+|Implementation:When requirements replace behavior, remove obsolete code|Do not retain superseded compatibility, shims, fallbacks, or migrations unless another rule requires them.
+|Design:Choose the simplest design that satisfies current requirements|Deliver the smallest runnable end-to-end flow first|Add abstraction only for demonstrated need|Keep modular ownership and separation of concerns|Prefer maintained libraries and proven high-impact patterns|Do not choose knowingly temporary architecture.
+|Verification:All validation must run in Apple Containers on macOS, Docker inside WSL2 Debian/Ubuntu on Windows, or Docker on Linux|Host-side validation is forbidden|After every validation remove project validation containers, temporary resources, and historical writable snapshots|Retain only project validation images and dependency caches whose deterministic identities match the current pinned toolchain and dependency-lock inputs|Remove stale project validation generations without pruning unrelated projects or global runtime resources|Run focused checks from CONTRIBUTING.md while iterating|Backend changes require relevant Go tests|Frontend changes require lint, typecheck, and relevant Vitest|Locale, deployment, migration, and release changes require dedicated checks.
+|Push:Ordinary branch pushes use skills/push-cli push|Never target the repository default branch.
+|Submit PR:Final submission uses skills/push-cli submit-pr|Ordinary and release-candidate PRs require the full profile and official local matrix in Apple Containers on macOS, Docker in WSL2 Debian/Ubuntu on Windows, or Docker on Linux|Only a verified published tag on its deterministic finalization tree may use release-finalization|Host-side execution of the full matrix is forbidden.
+|Release Promotion:Use skills/release-cli with the exact typed submit-pr proof, protected GitHub auto-merge without admin bypass, and successful PR plus merged-main Actions|Independently regenerate release-finalization trees|Release metadata validation must not repeat the complete local application matrix.
+|Release Notes:Per-release changes belong in GitHub Release notes, not README files|Cover compatibility, known issues, and upstream baseline.
+|Release Consistency:Tag, embedded version, Docker build args, and UPSTREAM.md must agree|Never reuse or retag a published version.
+|Release Flow:Never push or commit release changes directly to main|Preparation and post-publication status changes require separate PRs|Tag only the actual PR merge commit after its exact main push CI and Security Scan evidence passes|The tag workflow must reuse that exact evidence rather than rerun the application matrix|Keep tag publication, Release monitoring, verification, and finalization separate and resumable.
+|Publication Safety:Do not create, move, delete, or push tags, Releases, or images without explicit publication request.
+|Upstream Merge:Preserve intentional Plus changes and update UPSTREAM.md in the same change.
+|Local Skill:skills/compress-cli
+|Skill Trigger:Use compress-cli when a request creates, compresses, validates, or updates AGENTS.md repository rules.
+|Fork Branch Architecture:In luohao830/sub2api-plus, plus/main is a read-only mirror of LuckyKuang/sub2api-plus:main and contains no fork changes; main is the protected fork integration/release branch; feature/*, fix/*, and hotfix/* target fork main through PRs; sync/* merges plus/main into fork main through PRs; release/* contains release metadata only and tags merged main commits after checks.
+|Fork Upstream PRs:PRs intended for LuckyKuang/sub2api-plus start from plus/main and contain only Plus-intended changes, never unrelated fork main changes.
+|Fork Versioning:The fork vX.Y.Z+custom.NNN sequence is independent from Plus; same-named tags do not conflict. After importing a newer Plus custom release, increment the fork custom revision and record the exact Plus tag, commit, and retained fork changes in UPSTREAM.md and GitHub Release notes.

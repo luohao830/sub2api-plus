@@ -16,6 +16,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -30,7 +31,7 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
-	if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformOpenAI {
+	if apiKey.Group == nil || (apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live is not supported for this platform")
 		return
 	}
@@ -44,6 +45,18 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		return
 	}
 	model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
+	if !compositeTargetPlatformAllowed(c, apiKey, model, service.PlatformOpenAI) {
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live only supports OpenAI models for Composite groups")
+		return
+	}
+	if upstreamModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && upstreamModel != model {
+		rewrittenSession, rewriteErr := sjson.SetBytes(request.Session, "model", upstreamModel)
+		if rewriteErr != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to apply Composite model route")
+			return
+		}
+		request.Session = rewrittenSession
+	}
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.live",
@@ -56,7 +69,7 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		reqLog,
 		apiKey,
 		subject,
-		service.ContentModerationProtocolOpenAIResponses,
+		service.ContentModerationProtocolOpenAILive,
 		model,
 		request.Session,
 	); decision != nil && !decision.AllowNextStage {
@@ -224,6 +237,14 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live call not found")
 		return
 	}
+	reqLog := requestLogger(
+		c,
+		"handler.openai_gateway.live_sideband",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+		zap.String("model", record.Model),
+	)
 	downstream, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{
 		InsecureSkipVerify: true,
 	})
@@ -234,6 +255,19 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 	if err := h.gatewayService.ProxyLiveSidebandWithHooks(c.Request.Context(), record, downstream, &service.LiveSidebandHooks{
 		BeforeFrame: func(ctx context.Context) error {
 			return h.enforceOpenAIWSIPAccess(ctx, trustedClientIdentity)
+		},
+		BeforeClientFrame: func(ctx context.Context, _ coderws.MessageType, payload []byte) error {
+			decision := h.checkSecurityAuditStage(
+				c, reqLog, apiKey, subject,
+				service.ContentModerationProtocolOpenAILive, record.Model, payload, "live_sideband",
+			)
+			if decision == nil || decision.AllowNextStage {
+				return nil
+			}
+			writeSecurityAuditWSError(ctx, downstream, decision)
+			return service.NewOpenAIWSClientCloseError(
+				securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil,
+			)
 		},
 		RecheckEvery: 5 * time.Second,
 	}); err != nil {
@@ -250,6 +284,6 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 func liveEnabledForAPIKey(apiKey *service.APIKey) bool {
 	return apiKey != nil &&
 		apiKey.Group != nil &&
-		apiKey.Group.Platform == service.PlatformOpenAI &&
+		(apiKey.Group.Platform == service.PlatformOpenAI || apiKey.Group.Platform == service.PlatformComposite) &&
 		apiKey.Group.AllowLive
 }

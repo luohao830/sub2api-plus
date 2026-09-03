@@ -38,6 +38,29 @@ func TestFilterHeadersDisabledUsesDefaultAllowlist(t *testing.T) {
 	}
 }
 
+func TestFilterHeadersAllowsReasoningIncludedByDefault(t *testing.T) {
+	src := http.Header{}
+	src.Set("X-Reasoning-Included", "1")
+
+	filtered := FilterHeaders(src, CompileHeaderFilter(config.ResponseHeaderConfig{}))
+	if got := filtered.Get("X-Reasoning-Included"); got != "1" {
+		t.Fatalf("expected X-Reasoning-Included passthrough, got %q", got)
+	}
+}
+
+func TestFilterHeadersForceRemoveOverridesReasoningIncluded(t *testing.T) {
+	src := http.Header{}
+	src.Set("X-Reasoning-Included", "1")
+
+	filtered := FilterHeaders(src, CompileHeaderFilter(config.ResponseHeaderConfig{
+		Enabled:     true,
+		ForceRemove: []string{"x-reasoning-included"},
+	}))
+	if got := filtered.Get("X-Reasoning-Included"); got != "" {
+		t.Fatalf("expected X-Reasoning-Included removal, got %q", got)
+	}
+}
+
 func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 	src := http.Header{}
 	src.Add("Content-Type", "application/json")
@@ -63,5 +86,22 @@ func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 	}
 	if filtered.Get("X-Blocked") != "" {
 		t.Fatalf("expected X-Blocked removed, got %q", filtered.Get("X-Blocked"))
+	}
+}
+
+func TestFilterHeadersCannotAllowReservedProjectHeader(t *testing.T) {
+	src := http.Header{
+		"X-Sub2API-Trace":   {"internal"},
+		"X-RateLimit-Reset": {"123"},
+	}
+	filtered := FilterHeaders(src, CompileHeaderFilter(config.ResponseHeaderConfig{
+		Enabled:           true,
+		AdditionalAllowed: []string{"x-sub2api-trace", "x-ratelimit-reset"},
+	}))
+	if got := filtered.Get("X-Sub2API-Trace"); got != "" {
+		t.Fatalf("expected reserved project header removal, got %q", got)
+	}
+	if got := filtered.Get("X-RateLimit-Reset"); got != "123" {
+		t.Fatalf("expected standard rate-limit header preservation, got %q", got)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/LuckyKuang/sub2api-plus/internal/config"
+	"github.com/LuckyKuang/sub2api-plus/internal/pkg/brandidentity"
 )
 
 // defaultAllowed 定义允许透传的响应头白名单
@@ -32,6 +33,9 @@ var defaultAllowed = map[string]struct{}{
 	"retry-after":                    {},
 	"location":                       {},
 	"www-authenticate":               {},
+	// Codex uses this response header to avoid estimating reasoning tokens a
+	// second time when upstream usage already includes them.
+	"x-reasoning-included": {},
 }
 
 // hopByHopHeaders 是跳过的 hop-by-hop 头部，这些头部由 HTTP 库自动处理
@@ -90,6 +94,9 @@ func FilterHeaders(src http.Header, filter *CompiledHeaderFilter) http.Header {
 	filtered := make(http.Header, len(src))
 	for key, values := range src {
 		lower := strings.ToLower(key)
+		if brandidentity.IsReservedHeaderName(key) {
+			continue
+		}
 		if _, blocked := filter.forceRemove[lower]; blocked {
 			continue
 		}
