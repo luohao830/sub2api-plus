@@ -20,6 +20,33 @@ sys.modules[SPEC.name] = push_cli
 SPEC.loader.exec_module(push_cli)
 
 
+class CommandEnvironmentTest(unittest.TestCase):
+    def test_gh_commands_disable_terminal_formatting(self) -> None:
+        completed = subprocess.CompletedProcess(["gh"], 0, stdout="")
+        with mock.patch.object(
+            push_cli.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            push_cli.run_command(["gh", "pr", "list"], capture=True)
+
+        command_env = run.call_args.kwargs["env"]
+        self.assertEqual("0", command_env["GH_FORCE_TTY"])
+        self.assertEqual("1", command_env["NO_COLOR"])
+        self.assertEqual("0", command_env["CLICOLOR"])
+
+    def test_non_gh_commands_keep_inherited_environment(self) -> None:
+        completed = subprocess.CompletedProcess(["git"], 0, stdout="")
+        with mock.patch.object(
+            push_cli.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            push_cli.run_command(["git", "status"], capture=True)
+
+        self.assertIsNone(run.call_args.kwargs["env"])
+
+
 class ProbeRuntimeTest(unittest.TestCase):
     def test_ready_apple_containers_is_self_sufficient(self) -> None:
         def optional(command: list[str], **_: object) -> tuple[bool, str]:

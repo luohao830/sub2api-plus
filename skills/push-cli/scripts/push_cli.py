@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import os
 import platform
 import re
 import shlex
@@ -91,6 +92,17 @@ def run_command(
     merge_stderr: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     actual_cwd = ROOT if cwd is None else cwd
+    command_env = None
+    # Keep captured GitHub CLI JSON free of terminal formatting.
+    if command and str(command[0]) == "gh":
+        command_env = os.environ.copy()
+        command_env.update(
+            {
+                "GH_FORCE_TTY": "0",
+                "NO_COLOR": "1",
+                "CLICOLOR": "0",
+            }
+        )
     try:
         return subprocess.run(
             [str(item) for item in command],
@@ -99,6 +111,7 @@ def run_command(
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=command_env,
             stdout=subprocess.PIPE if capture else None,
             stderr=(subprocess.STDOUT if merge_stderr else subprocess.PIPE)
             if capture
