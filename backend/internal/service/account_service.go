@@ -152,25 +152,11 @@ type OpenAIOAuthPolicyTransactionRepository interface {
 	) error
 }
 
-// AccountBillingSettingsRepository applies an admin edit without overwriting a
-// rate_multiplier that a successful upstream probe synchronized after the edit
-// form was loaded. A nil rateMultiplier means the request did not edit it.
-type AccountBillingSettingsRepository interface {
-	UpdateWithAccountBillingSettings(
-		ctx context.Context,
-		account *Account,
-		probeEnabled *bool,
-		rateSyncEnabled *bool,
-		rateMultiplier *float64,
-	) error
-}
-
 // AdminAccountRepository makes the account-duplication write capability an explicit
 // construction dependency without forcing read-only gateway test doubles to implement it.
 type AdminAccountRepository interface {
 	AccountRepository
 	AccountDuplicateRepository
-	AccountBillingSettingsRepository
 }
 
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
@@ -186,7 +172,6 @@ type AccountBulkUpdate struct {
 	Schedulable    *bool
 	Credentials    map[string]any
 	Extra          map[string]any
-	ProbeEnabled   *bool
 }
 
 // CreateAccountRequest 创建账号请求
@@ -265,6 +250,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {
 		account.AutoPauseOnExpired = true
+	}
+	if err := account.NormalizeCodexFingerprintMode(); err != nil {
+		return nil, err
 	}
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -357,7 +345,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
-		account.Extra = extra
+		account.Extra = withExistingCodexFingerprintModeIfOmitted(account, extra)
+	} else {
+		canonicalizeCodexFingerprintModeForOmittedExtraUpdate(account)
 	}
 
 	if req.ProxyID != nil {
@@ -380,6 +370,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
+	}
+	if err := account.NormalizeCodexFingerprintMode(); err != nil {
+		return nil, err
 	}
 
 	// 先验证分组是否存在（在任何写操作之前）

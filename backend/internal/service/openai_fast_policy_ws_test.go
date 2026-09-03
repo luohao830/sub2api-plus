@@ -285,6 +285,26 @@ func (f *fakePassthroughFrameConn) Close() error {
 	return nil
 }
 
+func TestOpenAIWSPassthroughRejectedNonCreateFrameNeverReachesUpstream(t *testing.T) {
+	client := &fakePassthroughFrameConn{reads: [][]byte{
+		[]byte(`{"type":"conversation.item.create","item":{"type":"message","role":"user","content":"blocked sideband content"}}`),
+	}}
+	upstream := &fakePassthroughFrameConn{}
+	auditCalls := 0
+	policyClient := &openAIWSPolicyEnforcingFrameConn{
+		inner: client,
+		filter: func(msgType coderws.MessageType, payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
+			auditCalls++
+			return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "security audit unavailable", errors.New("audit rejected frame"))
+		},
+	}
+
+	_, _, err := readNextOpenAIWSPassthroughResponseCreate(context.Background(), policyClient, upstream)
+	require.Error(t, err)
+	require.Equal(t, 1, auditCalls)
+	require.Empty(t, upstream.writes)
+}
+
 // gpt55WhitelistFastPolicy 返回一份强制带 model whitelist 的策略，用于
 // 验证 capturedSessionModel fallback 的语义（默认配置没有规则，fallback
 // 路径无法被观察到）。
@@ -346,6 +366,23 @@ func TestPolicyEnforcingFrameConn_FollowupFrameWithoutModelUsesCapturedModel(t *
 	require.NotContains(t, string(payload), `"service_tier"`,
 		"D5 regression: empty model on follow-up frame must fall back to capturedSessionModel; whitelist policy filters service_tier=priority for gpt-5.5")
 	require.Equal(t, "response.create", gjson.GetBytes(payload, "type").String())
+}
+
+func TestOpenAIWSPassthroughPolicyModelDoesNotApplyAccountMapping(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"public-model": "private-model"},
+		},
+		Extra: map[string]any{"openai_passthrough": true},
+	}
+
+	responseCreate := []byte(`{"type":"response.create","model":"public-model"}`)
+	require.Equal(t, "public-model", openAIWSPassthroughPolicyModelForFrame(account, responseCreate))
+
+	sessionUpdate := []byte(`{"type":"session.update","session":{"model":"public-model"}}`)
+	require.Equal(t, "public-model", openAIWSPassthroughPolicyModelFromSessionFrame(account, sessionUpdate))
 }
 
 // TestPolicyEnforcingFrameConn_WithoutCapturedFallbackPolicyMisses pins the

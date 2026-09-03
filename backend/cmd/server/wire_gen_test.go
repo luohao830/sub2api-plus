@@ -66,6 +66,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,
+		nil, // cnProviderBalanceCheck
 		codexVersionSyncSvc,
 		proxyExpirySvc,
 		subscriptionExpirySvc,
@@ -90,11 +91,12 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // channelMonitorRunner
 		nil, // channelMonitorV2Aggregator
 		nil, // quotaFlusher
-		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
 		nil, // usageAlert
 		nil, // auditLog
+		nil, // openAIAutoReset
 		nil, // promptAudit
+		nil, // pluginManager
 	)
 
 	require.NotPanics(t, func() {

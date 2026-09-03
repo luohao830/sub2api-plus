@@ -34,6 +34,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	SetOpsUpstreamModel(c, upstreamModel)
 	upstreamBody := body
 	if upstreamModel != originalModel {
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
@@ -46,11 +47,13 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 		zap.String("upstream_model", upstreamModel),
 	)
 
-	apiKey := account.GetOpenAIApiKey()
+	apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if apiKey == "" {
 		return nil, fmt.Errorf("account %d missing api_key", account.ID)
 	}
-	baseURL := account.GetOpenAIBaseURL()
+	// 协议感知：Anthropic 协议账号的凭证 base_url 指向 /anthropic 端点，
+	// embeddings 需使用 OpenAI 格式 base。
+	baseURL := account.GetOpenAIFormatBaseURL()
 	if baseURL == "" {
 		baseURL = "https://api.openai.com"
 	}
@@ -85,7 +88,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
@@ -129,13 +132,16 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 				Detail:             upstreamDetail,
 			})
 			shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
-			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				RetryableOnSameAccount: !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			retryableOnSameAccount := !shouldDisable && account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode)
+			if account.IsOpenAIOAuth() && resp.StatusCode == http.StatusTooManyRequests {
+				return nil, s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, respBody, upstreamMsg, shouldDisable, retryableOnSameAccount)
 			}
+			if isOpenAIHTTPUpstreamAccessStateError(resp.StatusCode, upstreamMsg, respBody) {
+				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, retryableOnSameAccount)
+			}
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: retryableOnSameAccount}
 		}
-		s.writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody)
+		s.writeOpenAIEmbeddingsUpstreamResponse(c, resp, account, respBody)
 		return nil, fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
 
@@ -147,7 +153,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 		return nil, fmt.Errorf("read upstream body: %w", err)
 	}
 
-	s.writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody)
+	s.writeOpenAIEmbeddingsUpstreamResponse(c, resp, account, respBody)
 
 	return &OpenAIForwardResult{
 		RequestID:     firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id")),
@@ -160,7 +166,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	}, nil
 }
 
-func (s *OpenAIGatewayService) writeOpenAIEmbeddingsUpstreamResponse(c *gin.Context, resp *http.Response, body []byte) {
+func (s *OpenAIGatewayService) writeOpenAIEmbeddingsUpstreamResponse(c *gin.Context, resp *http.Response, account *Account, body []byte) {
 	if c == nil || resp == nil {
 		return
 	}
@@ -170,7 +176,7 @@ func (s *OpenAIGatewayService) writeOpenAIEmbeddingsUpstreamResponse(c *gin.Cont
 	if resp.Header != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	s.applyCodexLocalGroupQuotaHeaders(c)
+	s.finalizeCodexClientQuotaHeaders(c.Writer.Header(), c, account)
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		c.Writer.Header().Set("Content-Type", ct)
 	} else {

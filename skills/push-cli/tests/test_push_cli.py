@@ -5,6 +5,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -480,14 +481,24 @@ class LocalChecksTest(unittest.TestCase):
             push_cli.run_local_checks("origin", "feature", runtime)
 
         names = [call.args[0] for call in run_step.call_args_list]
-        self.assertEqual("Apple Container lifecycle test", names[0])
+        self.assertIn("Apple Container lifecycle test", names)
+        self.assertIn("Compress CLI self-tests", names)
+        compress_test = next(
+            call
+            for call in run_step.call_args_list
+            if call.args[0] == "Compress CLI self-tests"
+        )
+        self.assertEqual(
+            [sys.executable, "skills/compress-cli/tests/test_compress_cli.py"],
+            compress_test.args[1],
+        )
         self.assertIn("Push CLI self-tests", names)
         self.assertIn("Release CLI self-tests", names)
         self.assertIn("Backend unit tests", names)
         self.assertIn("Frontend production build", names)
         self.assertIn("Docker Compose security", names)
         self.assertIn("Docker runtime resources", names)
-        audit_check.assert_called_once_with()
+        audit_check.assert_called_once_with(lane="frontend")
 
     def test_docker_runtime_still_runs_apple_lifecycle_test(self) -> None:
         git_miss = subprocess.CompletedProcess(["git"], 1, "")
@@ -502,7 +513,7 @@ class LocalChecksTest(unittest.TestCase):
         names = [call.args[0] for call in run_step.call_args_list]
         self.assertIn("Apple Container lifecycle test", names)
 
-    def test_frontend_tests_respect_validation_container_cpu_budget(self) -> None:
+    def test_parallel_frontend_tests_respect_validation_container_cpu_budget(self) -> None:
         git_miss = subprocess.CompletedProcess(["git"], 1, "")
         with (
             mock.patch.object(push_cli, "ROOT", Path("/repo")),
@@ -511,6 +522,36 @@ class LocalChecksTest(unittest.TestCase):
             mock.patch.object(push_cli, "run_frontend_security_check"),
         ):
             push_cli.run_local_checks("origin", "feature", push_cli.Runtime("docker"))
+
+        frontend_test = next(
+            call for call in run_step.call_args_list if call.args[0] == "Frontend tests"
+        )
+        self.assertEqual(
+            [
+                "pnpm",
+                "--dir",
+                "frontend",
+                "run",
+                "test:run",
+                "--maxWorkers=2",
+            ],
+            frontend_test.args[1],
+        )
+
+    def test_serial_frontend_tests_use_the_full_container_cpu_budget(self) -> None:
+        git_miss = subprocess.CompletedProcess(["git"], 1, "")
+        with (
+            mock.patch.object(push_cli, "ROOT", Path("/repo")),
+            mock.patch.object(push_cli, "run_command", return_value=git_miss),
+            mock.patch.object(push_cli, "run_step") as run_step,
+            mock.patch.object(push_cli, "run_frontend_security_check"),
+        ):
+            push_cli.run_local_checks(
+                "origin",
+                "feature",
+                push_cli.Runtime("docker"),
+                serial=True,
+            )
 
         frontend_test = next(
             call for call in run_step.call_args_list if call.args[0] == "Frontend tests"
@@ -549,7 +590,19 @@ class BranchAndProofTest(unittest.TestCase):
         updated = push_cli.with_validation_marker(body, new)
         self.assertEqual(1, len(push_cli.VALIDATION_MARKER_RE.findall(updated)))
         self.assertIn('"base":"' + "c" * 40 + '"', updated)
+        self.assertIn('"profile":"full"', updated)
         self.assertNotIn('"base":"' + "a" * 40 + '"', updated)
+
+    def test_finalization_marker_binds_the_published_tag(self) -> None:
+        proof = push_cli.ValidationProof(
+            "a" * 40,
+            "b" * 40,
+            profile=push_cli.FINALIZATION_PROFILE,
+            tag="v1.2.3+custom.009",
+        )
+        marker = push_cli.validation_marker(proof)
+        self.assertIn('"profile":"release-finalization"', marker)
+        self.assertIn('"tag":"v1.2.3+custom.009"', marker)
 
     def test_latest_base_rejects_stale_branch(self) -> None:
         stale = subprocess.CompletedProcess([], 1, "")
@@ -657,6 +710,77 @@ class PullRequestUpdateTest(unittest.TestCase):
         self.assertNotIn("edit", command)
 
 
+class ValidationGenerationTest(unittest.TestCase):
+    @staticmethod
+    def create_inputs(root: Path) -> None:
+        (root / "deploy").mkdir(parents=True)
+        (root / "backend").mkdir()
+        (root / "frontend").mkdir()
+        (root / "deploy" / "Dockerfile.validation").write_text(
+            "FROM debian:bookworm-slim\n", encoding="utf-8"
+        )
+        (root / "backend" / "go.mod").write_text(
+            "module example.test/sub2api\n\ngo 1.27.0\n", encoding="utf-8"
+        )
+        (root / "backend" / "go.sum").write_text("module-checksum\n", encoding="utf-8")
+        (root / "frontend" / "package.json").write_text(
+            json.dumps({"packageManager": "pnpm@9.15.9"}), encoding="utf-8"
+        )
+        (root / "frontend" / "pnpm-lock.yaml").write_text(
+            "lockfileVersion: '9.0'\n", encoding="utf-8"
+        )
+        (root / ".tool-versions").write_text(
+            "golangci-lint 2.13.1\ngoreleaser 2.17.1\n", encoding="utf-8"
+        )
+
+    def test_image_generation_includes_resolved_node_pin(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.create_inputs(root)
+            original = push_cli.validation_runtime.validation_image_digest(root)
+            with mock.patch.object(push_cli.validation_runtime, "NODE_VERSION", "20.19.5"):
+                changed = push_cli.validation_runtime.validation_image_digest(root)
+
+        self.assertNotEqual(original, changed)
+
+    def test_lockfile_change_rotates_cache_without_rebuilding_toolchain_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.create_inputs(root)
+            image_before = push_cli.validation_runtime.validation_image_digest(root)
+            cache_before = push_cli.validation_runtime.validation_cache_digest(root)
+            (root / "frontend" / "pnpm-lock.yaml").write_text(
+                "lockfileVersion: '9.0'\npackages: {}\n", encoding="utf-8"
+            )
+            image_after = push_cli.validation_runtime.validation_image_digest(root)
+            cache_after = push_cli.validation_runtime.validation_cache_digest(root)
+
+        self.assertEqual(image_before, image_after)
+        self.assertNotEqual(cache_before, cache_after)
+
+    def test_host_cache_mounts_are_partitioned_by_frozen_generation(self) -> None:
+        runtime = push_cli.Runtime("docker")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            with mock.patch.object(push_cli.validation_runtime.Path, "home", return_value=home):
+                mounts = push_cli.validation_runtime.cache_mounts(
+                    runtime,
+                    root=Path("/unused"),
+                    capture=mock.Mock(),
+                    generation="aaaaaaaaaaaaaaaa",
+                )
+
+            generation_root = home / ".cache" / "sub2api-validation" / "aaaaaaaaaaaaaaaa"
+            self.assertEqual(
+                [
+                    (str(generation_root / "go"), "/tmp/sub2api-home/go"),
+                    (str(generation_root / "pnpm"), "/tmp/sub2api-home/pnpm"),
+                ],
+                mounts,
+            )
+            self.assertTrue((generation_root / "frontend-node-modules").is_dir())
+
+
 class ValidationLaunchTest(unittest.TestCase):
     def test_macos_launch_uses_apple_container_run(self) -> None:
         runtime = push_cli.Runtime("apple-containers", compose_required=False)
@@ -676,16 +800,22 @@ class ValidationLaunchTest(unittest.TestCase):
             mock.patch.object(
                 push_cli.validation_runtime,
                 "validation_image_ref",
-                return_value="sub2api-validation:test",
+                return_value="sub2api-validation:1111111111111111",
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "validation_cache_digest",
+                return_value="aaaaaaaaaaaaaaaa",
             ),
             mock.patch.object(
                 push_cli.validation_runtime,
                 "in_validation_container",
                 return_value=False,
             ),
+            mock.patch.object(push_cli.validation_runtime, "cleanup_validation_runtime") as cleanup,
             mock.patch.object(push_cli, "run_step") as run_step,
         ):
-            push_cli.launch_in_validation(runtime, "origin")
+            push_cli.launch_in_validation(runtime, "origin", serial=True)
 
         name, command = run_step.call_args.args
         self.assertEqual("In-container validation", name)
@@ -701,6 +831,8 @@ class ValidationLaunchTest(unittest.TestCase):
         self.assertNotIn("go", command)
         self.assertNotIn("pnpm", command)
         self.assertIn("--in-validation", command)
+        self.assertIn("--serial", command)
+        cleanup.assert_called_once()
 
     def test_windows_launch_uses_wsl_docker_run(self) -> None:
         wsl = "C:/Windows/System32/wsl.exe"
@@ -725,13 +857,19 @@ class ValidationLaunchTest(unittest.TestCase):
             mock.patch.object(
                 push_cli.validation_runtime,
                 "validation_image_ref",
-                return_value="sub2api-validation:test",
+                return_value="sub2api-validation:1111111111111111",
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "validation_cache_digest",
+                return_value="aaaaaaaaaaaaaaaa",
             ),
             mock.patch.object(
                 push_cli.validation_runtime,
                 "in_validation_container",
                 return_value=False,
             ),
+            mock.patch.object(push_cli.validation_runtime, "cleanup_validation_runtime") as cleanup,
             mock.patch.object(push_cli, "run_step") as run_step,
         ):
             push_cli.launch_in_validation(runtime, "origin")
@@ -743,6 +881,7 @@ class ValidationLaunchTest(unittest.TestCase):
         )
         self.assertIn("/mnt/c/repo:/mnt/c/repo", command)
         self.assertNotIn("go", command)
+        cleanup.assert_called_once()
 
     def test_linux_launch_uses_docker_run(self) -> None:
         runtime = push_cli.Runtime("docker")
@@ -762,13 +901,19 @@ class ValidationLaunchTest(unittest.TestCase):
             mock.patch.object(
                 push_cli.validation_runtime,
                 "validation_image_ref",
-                return_value="sub2api-validation:test",
+                return_value="sub2api-validation:1111111111111111",
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "validation_cache_digest",
+                return_value="aaaaaaaaaaaaaaaa",
             ),
             mock.patch.object(
                 push_cli.validation_runtime,
                 "in_validation_container",
                 return_value=False,
             ),
+            mock.patch.object(push_cli.validation_runtime, "cleanup_validation_runtime") as cleanup,
             mock.patch.object(push_cli, "run_step") as run_step,
         ):
             push_cli.launch_in_validation(runtime, "origin")
@@ -777,11 +922,170 @@ class ValidationLaunchTest(unittest.TestCase):
         self.assertEqual(["docker", "run", "--rm", "--cpus", "4", "--memory", "8G"], command[:7])
         self.assertNotIn("go", command)
         self.assertNotIn("pnpm", command)
+        cleanup.assert_called_once()
+
+    def test_cleanup_failure_does_not_hide_validation_failure(self) -> None:
+        runtime = push_cli.Runtime("apple-containers", compose_required=False)
+        with (
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "runtime_user",
+                return_value="501:20",
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "cache_mounts",
+                return_value=[],
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "validation_image_ref",
+                return_value="sub2api-validation:1111111111111111",
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "validation_cache_digest",
+                return_value="aaaaaaaaaaaaaaaa",
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "in_validation_container",
+                return_value=False,
+            ),
+            mock.patch.object(
+                push_cli.validation_runtime,
+                "cleanup_validation_runtime",
+                side_effect=RuntimeError("cleanup failed"),
+            ) as cleanup,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "validation failed"):
+                push_cli.validation_runtime.launch_in_validation(
+                    runtime,
+                    ["true"],
+                    root=Path("/repo"),
+                    capture=mock.Mock(),
+                    run_step=mock.Mock(side_effect=RuntimeError("validation failed")),
+                )
+
+        cleanup.assert_called_once_with(
+            runtime,
+            image="sub2api-validation:1111111111111111",
+            cache_generation="aaaaaaaaaaaaaaaa",
+            capture=mock.ANY,
+            run_step=mock.ANY,
+        )
+
+
+class ValidationCleanupTest(unittest.TestCase):
+    def test_apple_cleanup_retains_current_generation_and_deletes_stale_resources(self) -> None:
+        runtime = push_cli.Runtime("apple-containers", compose_required=False)
+        commands: list[tuple[str, list[str]]] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            cache = home / ".cache" / "sub2api-validation"
+            current_cache = cache / "aaaaaaaaaaaaaaaa"
+            stale_cache = cache / "bbbbbbbbbbbbbbbb"
+            legacy_cache = cache / "go"
+            current_cache.mkdir(parents=True)
+            stale_cache.mkdir()
+            legacy_cache.mkdir()
+            with mock.patch.object(push_cli.validation_runtime.Path, "home", return_value=home):
+                push_cli.validation_runtime.cleanup_validation_runtime(
+                    runtime,
+                    image="sub2api-validation:1111111111111111",
+                    cache_generation="aaaaaaaaaaaaaaaa",
+                    capture=lambda command: (
+                        "NAME TAG DIGEST\n"
+                        "sub2api-validation 1111111111111111 current\n"
+                        "sub2api-validation 2222222222222222 stale\n"
+                        "postgres 18-alpine unrelated\n"
+                    ),
+                    run_step=lambda name, command: commands.append((name, list(command))),
+                )
+
+            self.assertTrue(current_cache.exists())
+            self.assertFalse(stale_cache.exists())
+            self.assertFalse(legacy_cache.exists())
+
+        self.assertEqual(
+            [
+                (
+                    "Remove stale validation image",
+                    ["container", "image", "delete", "sub2api-validation:2222222222222222"],
+                )
+            ],
+            commands,
+        )
+
+    def test_linux_cleanup_retains_current_generation_when_no_stale_resources_exist(self) -> None:
+        runtime = push_cli.Runtime("docker")
+        commands: list[tuple[str, list[str]]] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            with mock.patch.object(push_cli.validation_runtime.Path, "home", return_value=home):
+                push_cli.validation_runtime.cleanup_validation_runtime(
+                    runtime,
+                    image="sub2api-validation:1111111111111111",
+                    cache_generation="aaaaaaaaaaaaaaaa",
+                    capture=lambda command: "REPOSITORY TAG IMAGE ID\nsub2api-validation 1111111111111111 current\n",
+                    run_step=lambda name, command: commands.append((name, list(command))),
+                )
+
+        self.assertEqual([], commands)
+
+    def test_wsl_cleanup_deletes_only_stale_project_generations(self) -> None:
+        prefix = ("wsl.exe", "-d", "Ubuntu-24.04", "--")
+        runtime = push_cli.Runtime("wsl2-docker", prefix, "/mnt/c/repo")
+        commands: list[tuple[str, list[str]]] = []
+
+        def capture(command: list[str]) -> str:
+            if command == [*prefix, "docker", "image", "list"]:
+                return (
+                    "REPOSITORY TAG IMAGE ID\n"
+                    "sub2api-validation 1111111111111111 current\n"
+                    "sub2api-validation 2222222222222222 stale\n"
+                )
+            if command[: len(prefix) + 1] == [*prefix, "find"]:
+                return "aaaaaaaaaaaaaaaa\nbbbbbbbbbbbbbbbb\ngo\n"
+            self.fail(f"unexpected command: {command}")
+
+        push_cli.validation_runtime.cleanup_validation_runtime(
+            runtime,
+            image="sub2api-validation:1111111111111111",
+            cache_generation="aaaaaaaaaaaaaaaa",
+            capture=capture,
+            run_step=lambda name, command: commands.append((name, list(command))),
+        )
+
+        self.assertEqual(
+            [
+                (
+                    "Remove stale validation image",
+                    [*prefix, "docker", "image", "rm", "sub2api-validation:2222222222222222"],
+                ),
+                (
+                    "Remove stale validation cache",
+                    [*prefix, "rm", "-rf", "/tmp/sub2api-validation-cache/bbbbbbbbbbbbbbbb"],
+                ),
+                (
+                    "Remove stale validation cache",
+                    [*prefix, "rm", "-rf", "/tmp/sub2api-validation-cache/go"],
+                ),
+            ],
+            commands,
+        )
 
 
 class MainFlowTest(unittest.TestCase):
     @staticmethod
-    def args(action: str, *, in_validation: bool = False) -> argparse.Namespace:
+    def args(
+        action: str,
+        *,
+        in_validation: bool = False,
+        profile: str = push_cli.FULL_PROFILE,
+        tag: str | None = None,
+        serial: bool = False,
+    ) -> argparse.Namespace:
         return argparse.Namespace(
             action=action,
             in_validation=in_validation,
@@ -790,6 +1094,9 @@ class MainFlowTest(unittest.TestCase):
             base_ref=None,
             title=None,
             body_file=None,
+            profile=profile,
+            tag=tag,
+            serial=serial,
         )
 
     def test_check_rejects_dirty_worktree_before_runtime_start(self) -> None:
@@ -895,7 +1202,12 @@ class MainFlowTest(unittest.TestCase):
         ):
             self.assertEqual(0, push_cli.main())
 
-        launch.assert_called_once_with(runtime, "origin", base_ref=None)
+        launch.assert_called_once_with(
+            runtime,
+            "origin",
+            base_ref=None,
+            serial=False,
+        )
         final_gate.assert_called_once_with(runtime)
         local_checks.assert_not_called()
         check.assert_not_called()
@@ -982,6 +1294,57 @@ class MainFlowTest(unittest.TestCase):
             self.assertEqual(0, push_cli.main())
 
         self.assertEqual(["validate", "recheck", "push", "status", "pr"], order)
+
+    def test_finalization_submit_pr_runs_focused_checks_without_runtime(self) -> None:
+        tag = "v1.2.3+custom.009"
+        args = self.args(
+            "submit-pr",
+            profile=push_cli.FINALIZATION_PROFILE,
+            tag=tag,
+        )
+        proof = push_cli.ValidationProof(
+            "a" * 40,
+            "b" * 40,
+            profile=push_cli.FINALIZATION_PROFILE,
+            tag=tag,
+        )
+        order: list[str] = []
+
+        def record(name: str):
+            def _inner(*_args: object, **_kwargs: object) -> None:
+                order.append(name)
+
+            return _inner
+
+        with (
+            mock.patch.object(push_cli, "parse_args", return_value=args),
+            mock.patch.object(push_cli, "github_gate", return_value="LuckyKuang/sub2api-plus"),
+            mock.patch.object(push_cli, "current_branch", return_value="release/finalize-1.2.3-custom.009"),
+            mock.patch.object(push_cli, "repository_default_branch", return_value="main"),
+            mock.patch.object(push_cli, "require_working_branch"),
+            mock.patch.object(push_cli, "require_no_git_operation"),
+            mock.patch.object(push_cli, "require_clean_worktree"),
+            mock.patch.object(push_cli, "require_latest_base", return_value=proof),
+            mock.patch.object(
+                push_cli,
+                "run_release_finalization_checks",
+                side_effect=record("validate"),
+            ),
+            mock.patch.object(push_cli, "ensure_clean_after_checks"),
+            mock.patch.object(push_cli, "require_unchanged_proof", side_effect=record("recheck")),
+            mock.patch.object(push_cli, "push_branch", side_effect=record("push")),
+            mock.patch.object(push_cli, "publish_validation_status", side_effect=record("status")),
+            mock.patch.object(push_cli, "create_or_update_pull_request", side_effect=record("pr")),
+            mock.patch.object(push_cli, "probe_runtime") as probe,
+            mock.patch.object(push_cli, "ensure_validation_image") as image,
+            mock.patch.object(push_cli, "launch_in_validation") as launch,
+        ):
+            self.assertEqual(0, push_cli.main())
+
+        self.assertEqual(["validate", "recheck", "push", "status", "pr"], order)
+        probe.assert_not_called()
+        image.assert_not_called()
+        launch.assert_not_called()
 
 
 if __name__ == "__main__":

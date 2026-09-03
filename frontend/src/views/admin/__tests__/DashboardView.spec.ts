@@ -144,7 +144,7 @@ describe('admin DashboardView', () => {
     }))
   })
 
-  it('shows prompt cache hit rate without output tokens in the denominator', async () => {
+  it('shows token shares without prompt cache hit rate', async () => {
     getSnapshotV2.mockResolvedValueOnce({
       stats: {
         ...createDashboardStats(),
@@ -180,6 +180,10 @@ describe('admin DashboardView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('dashboard.cacheHitRate 25.0%')
+    const text = wrapper.text()
+    expect(text).not.toContain('Cache Hit Rate')
+    expect(text).toContain('dashboard.input 9.1%')
+    expect(text).toContain('dashboard.output 81.8%')
+    expect(text).toContain('dashboard.cache 9.1%')
   })
 })

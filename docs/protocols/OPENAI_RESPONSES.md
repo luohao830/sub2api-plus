@@ -59,8 +59,9 @@ families have that field removed. Deprecated `prompt_cache_retention` is
 removed on every path.
 
 Usage ingestion treats ordinary input, cache-read input, and cache-write input
-as mutually exclusive stored buckets. The UI reports prompt-cache hit rate as
-`cache_read / (input + cache_read + cache_write)`; output tokens are excluded.
+as mutually exclusive stored buckets. Usage pages may report each bucket's
+share of total tokens, but do not derive a prompt-cache hit rate from these
+counters.
 Canonical nested usage details take priority by field presence, including an
 explicit zero, before known top-level compatibility aliases are considered.
 
@@ -78,18 +79,30 @@ subscription quota view is enabled:
   clients that only understand a relative countdown.
 
 When local Codex subscription quota is enabled, `Primary` represents the local
-7-day window and `Secondary` represents the local rolling 5-hour window. The
-gateway clears all upstream rate-limit fields before writing the local values,
-so one response never mixes upstream reset times with local percentages or
-window sizes. With the local view disabled, eligible upstream headers are
-passed through unchanged for HTTP and SSE responses.
+7-day window and `Secondary` represents the local rolling 5-hour window. This
+local view is authoritative even when the selected OpenAI account enables
+automatic passthrough. The gateway clears all upstream default rate-limit
+fields before writing the local values, so one response never mixes upstream
+reset times with local percentages or window sizes.
+
+When the local view is disabled, the selected account's real default quota is
+visible only when that account enables OpenAI automatic passthrough. Otherwise
+the gateway removes the default `Primary` and `Secondary` quota fields after
+generic response-header filtering, so an additional response-header allowance
+cannot bypass this policy.
 
 A client WebSocket `101` response is committed before the gateway connects to
 the selected upstream. The gateway therefore writes only the local quota view
-known before the upgrade. When that view is disabled, it does not inject Codex
-quota headers into the `101` response and cannot pass through headers from a
-later upstream handshake. HTTP and SSE headers are finalized before their
-response bodies are written.
+known before the upgrade. The official WebSocket client updates quota from
+in-band `codex.rate_limits` events, so the gateway applies the same policy to
+the default `codex` event family: replace it with local subscription windows,
+pass it through for an automatic-passthrough account, or suppress it. Named
+model-specific limit families remain independent. HTTP and SSE headers are
+finalized before their response bodies are written.
+
+The dedicated `/backend-api/wham/usage` route remains a local-only view. It
+returns the API key subscription quota when the local setting is enabled and
+returns 404 otherwise; it does not select an account or proxy upstream quota.
 
 This response-header compatibility does not make Codex App API-key calls to
 `account/rateLimits/read` available; that App Server authentication behavior is
@@ -98,11 +111,89 @@ outside this gateway's request path.
 ## Codex Fingerprint Convergence
 
 OpenAI OAuth accounts may rewrite outbound Codex installation, session, and
-thread carriers after Plus session-policy resolution. Unset accounts use
-`session` mode. Compact requests skip that rewrite so the isolated compact
-session namespace is not replaced. Usage-log `session_id` stays the sanitized
-client-original value. User-Agent, Originator, and Version keep the account >
-global > compiled-default source order.
+thread carriers. Unset accounts use `device` mode. Ordinary Responses,
+Chat-Completions-to-Responses, Messages-to-Responses, HTTP-to-WebSocket, and
+direct Responses WebSocket turns use the configured account mode. Native
+remote Compact v2 is an ordinary Responses session for fingerprint purposes
+and therefore also uses the full configured mode. The ChatGPT Codex OAuth
+legacy compact compatibility path uses installation-only convergence for every
+non-`off` mode and preserves its own compact session, cache, and thread
+namespace.
+
+Here `legacy` refers only to the ChatGPT Codex OAuth compatibility branch used
+by this gateway. The public API-key
+[`/v1/responses/compact`](https://developers.openai.com/api/reference/java/resources/responses/methods/compact)
+endpoint remains a distinct supported OpenAI API surface. Response retrieve,
+cancel, and other non-create subpaths are not session turns and receive no
+fingerprint mutation.
+
+Fingerprint preparation runs before final request construction. Plus
+prompt-cache/session isolation is authoritative for the final `session-id` and
+`session_id` headers, while fingerprint convergence remains authoritative for
+installation and thread/turn metadata. `off` disables only fingerprint-owned
+header and body mutation; it does not disable Plus cache isolation, security,
+session sharing, or compact policy. WebSocket connection reuse compares final
+stable handshake carriers even when `off` or `device` leaves those values
+client-owned. Usage-log `session_id` stays the sanitized client-original value.
+
+Only credential-owning OpenAI OAuth accounts participate. Personal access
+token and Agent Identity accounts follow the same endpoint semantics because
+they are OpenAI OAuth credential owners. API-key, setup-token, and non-session
+endpoints such as count-tokens and alpha-search are excluded. User-Agent,
+Originator, and Version use one source chain: valid credential-owner
+`credentials.user_agent`, then valid global `openai_codex_user_agent`, then the
+compiled default. Version synchronization changes only the version declaration
+of the selected identity.
+
+## Security Audit Content Boundary
+
+Inbound Responses content is normalized for Content Moderation and Prompt
+Audit before account selection, billing, concurrency acquisition, fingerprint
+convergence, request adaptation, or upstream writes. API-key and OAuth account
+paths therefore use the same audit content.
+
+The canonical boundary covers top-level and `response`-nested `instructions`,
+`tools`, `input`, reusable `prompt.variables`, message text, tool definitions,
+and the arguments, input, output, result, or dynamic tools carried by function,
+custom, tool-search, local/hosted shell, apply-patch, computer, MCP,
+code-interpreter, and programmatic-tool-calling items. Media fields and
+encoded screenshots are removed before text serialization and persistence;
+ordinary text in the same structured result is retained.
+
+Content Moderation consumes the same canonical result but selects only the
+current direct-user message text and images. It excludes `instructions`, tool
+definitions, reusable prompt variables, assistant/model messages, reasoning,
+tool calls/results, approval responses, and tool-produced screenshots. This
+prevents platform context or external tool content from being reported as a
+user policy violation. Prompt Audit also consumes that canonical result, but
+its selection follows `v0.1.177+custom.003`: conversation text such as
+`instructions`, message text, and reusable prompt variables is scanned, while
+static `tools` schemas and structured tool-call arguments/results are not
+treated as prompt text. Latest-turn blocking scans the latest user text plus
+the nearest preceding assistant/model output.
+A supported WebSocket control frame may produce no audit input. Unknown sibling
+keys, unsupported event/item types, and valid-JSON unrecognized structures pass
+through without an audit-derived block. When the canonical extractor recognizes
+`input`, `instructions`, or nested `response.input`, an envelope `type` value
+does not suppress those extracted segments. An unsupported envelope type is
+still counted and safely logged as an extraction failure while those extracted
+segments remain auditable.
+Non-empty root, nested `response`, and session objects with no recognized field
+are counted and safely logged as extraction failures before they pass through;
+unknown sibling keys on an otherwise recognized object remain ordinary success.
+Direct passthrough runs the audit hook for every client text or binary frame,
+including `conversation.item.create` and `session.update`, before any
+non-`response.create` frame is forwarded. Unsupported binary/JSON content and
+recognized items that cannot be normalized are logged and pass through unless
+independent transport/basic validation rejects them. Successfully extracted
+sibling content remains auditable. Extraction failure alone never becomes a
+policy block, unavailable decision, HTTP 503, or WebSocket close. Compact
+keepalive output and channel mapping start only after this gate. The audit uses
+an immutable copy of the inbound body so compact normalization and reasoning
+policy rewrites cannot remove content from the audited view.
+
+The complete protocol/source matrix is maintained in
+[`docs/SECURITY_AUDIT_CONTENT_COVERAGE.md`](../SECURITY_AUDIT_CONTENT_COVERAGE.md).
 
 ## Request Replay and Upstream Failures
 

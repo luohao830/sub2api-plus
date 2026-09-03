@@ -9,8 +9,8 @@ derives the OCI image tag by preserving the leading `v` and replacing only
 `+` with `-`.
 
 ```text
-Git/GitHub: v0.1.177+custom.002
-GHCR:       ghcr.io/luckykuang/sub2api-plus:v0.1.177-custom.002
+Git/GitHub: v0.1.183+custom.004
+GHCR:       ghcr.io/luckykuang/sub2api-plus:v0.1.183-custom.004
 ```
 
 Pin the GHCR version tag for reproducible deployments. See
@@ -128,7 +128,7 @@ If you prefer manual control:
 ```bash
 # Clone repository
 git clone https://github.com/luckykuang/sub2api-plus.git
-cd sub2api/deploy
+cd sub2api-plus/deploy
 
 # Configure environment
 cp .env.example .env
@@ -186,6 +186,18 @@ When using Docker Compose with `AUTO_SETUP=true`:
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).
 - `schema_migrations` tracks applied migrations (filename + checksum).
 - Migrations are forward-only; rollback requires a DB backup restore or a manual compensating SQL script.
+- Published Plus `v0.1.178+custom.001` introduced migrations `224`, `225`, `226`,
+  and `228` in lexical order. Migration `227` is intentionally unused; `228`
+  is the next unique prefix for the platform-constraint correction.
+- Upgrades from the latest published Plus release, `v0.1.178+custom.005`, to
+  `v0.1.183+custom.001` additionally apply migrations `229` through `233`:
+  usage-log indexes, Composite CN providers, channel pricing multipliers,
+  OAuth transport plugins, and plugin artifacts.
+- Before upgrading to a release that adds migrations, back up PostgreSQL. The
+  application rollback commands below only change the application image or
+  binary; they do not reverse schema, data, functions, or triggers. Restoring
+  the previous database behavior requires a backup restore or an audited
+  compensating SQL migration.
 
 **Verify `users.allowed_groups` → `user_allowed_groups` backfill**
 
@@ -510,13 +522,13 @@ Replace the immutable tag with another value reported by `list-versions` when
 needed:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/LuckyKuang/sub2api-plus/main/deploy/install.sh | sudo bash -s -- install --version 'v0.1.177+custom.002'
+curl -sSL https://raw.githubusercontent.com/LuckyKuang/sub2api-plus/main/deploy/install.sh | sudo bash -s -- install --version 'v0.1.183+custom.004'
 ```
 
 Roll back an existing binary installation to an earlier published version:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/LuckyKuang/sub2api-plus/main/deploy/install.sh | sudo bash -s -- rollback 'v0.1.177+custom.001'
+curl -sSL https://raw.githubusercontent.com/LuckyKuang/sub2api-plus/main/deploy/install.sh | sudo bash -s -- rollback 'v0.1.183+custom.003'
 ```
 
 Upgrade to the latest release:
@@ -540,13 +552,13 @@ curl -sSL https://raw.githubusercontent.com/LuckyKuang/sub2api-plus/main/deploy/
 For a downloaded `install.sh`, invoke one operation at a time. For example:
 
 ```bash
-sudo ./install.sh install --version 'v0.1.177+custom.002'
+sudo ./install.sh install --version 'v0.1.183+custom.004'
 ```
 
 Roll back a downloaded-script installation one operation at a time:
 
 ```bash
-sudo ./install.sh rollback 'v0.1.177+custom.001'
+sudo ./install.sh rollback 'v0.1.183+custom.003'
 ```
 
 Or uninstall while preserving `/etc/sub2api`:

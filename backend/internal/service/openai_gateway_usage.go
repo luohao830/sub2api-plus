@@ -149,6 +149,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
+	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(result))
 
 	// OpenAI input_tokens 是总输入，包含缓存读取和缓存写入明细。
 	// 将三类 token 拆成互斥桶，避免缓存写入同时按普通输入和 cache_write 重复计费。
@@ -180,7 +181,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// 变价）；未装配 PricingAt 的路径回退记录时刻，保持既有行为。不并入上面的
 	// Resolve，以免污染 user:group 倍率缓存。
 	baseMultiplier := multiplier
-	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, openAIUsagePricingAt(input))
+	pricingAt := openAIUsagePricingAt(input)
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
 
 	var cost *CostBreakdown
@@ -203,6 +205,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamModel,
 		result.Model,
 	)
+	billingModels = s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, billingModels)
+	protectedMismatch := isUnmappedCodexAutoReviewLunaMismatch(input, result)
+	if protectedMismatch {
+		billingModels = []string{codexAutoReviewModel}
+	}
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
@@ -215,32 +222,63 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	}
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
-	cost, err = s.calculateOpenAIRecordUsageCost(
-		ctx,
-		result,
-		apiKey,
-		billingModels,
-		multiplier,
-		imageMultiplier,
-		videoMultiplier,
-		baseMultiplier,
-		tokens,
-		serviceTier,
-		longContextBillingGate,
-	)
+	var protectedPricingSource string
+	if protectedMismatch {
+		cost, protectedPricingSource, err = s.calculateCodexAutoReviewProtectedCost(
+			ctx,
+			result,
+			apiKey,
+			multiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			pricingAt,
+			tokens,
+		)
+	} else {
+		cost, err = s.calculateOpenAIRecordUsageCost(
+			ctx,
+			result,
+			apiKey,
+			billingModels,
+			multiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			tokens,
+			serviceTier,
+			longContextBillingGate,
+			pricingAt,
+		)
+	}
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
 		}
-		logger.L().With(
-			zap.String("component", "service.openai_gateway"),
-			zap.Strings("billing_models", billingModels),
-			zap.String("requested_model", input.OriginalModel),
-			zap.String("mapped_model", input.ChannelMappedModel),
-			zap.String("upstream_model", result.UpstreamModel),
-			zap.Int64("api_key_id", apiKey.ID),
-			zap.Int64("account_id", account.ID),
-		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
+		if protectedMismatch {
+			logger.L().Error("codex_auto_review_luna_mismatch_pricing_unavailable",
+				zap.String("event", "billing.codex_auto_review_luna_mismatch_protected"),
+				zap.String("request_id", result.RequestID),
+				zap.String("requested_model", firstNonEmpty(strings.TrimSpace(input.OriginalModel), strings.TrimSpace(result.Model))),
+				zap.String("channel_mapped_model", strings.TrimSpace(input.ChannelMappedModel)),
+				zap.String("upstream_model", strings.TrimSpace(result.UpstreamModel)),
+				zap.String("upstream_response_model", strings.TrimSpace(result.UpstreamResponseModel)),
+				zap.Bool("model_mismatch", true),
+				zap.String("billing_model", codexAutoReviewModel),
+				zap.String("decision", "pricing_unavailable"),
+				zap.Error(err),
+			)
+		} else {
+			logger.L().With(
+				zap.String("component", "service.openai_gateway"),
+				zap.Strings("billing_models", billingModels),
+				zap.String("requested_model", input.OriginalModel),
+				zap.String("mapped_model", input.ChannelMappedModel),
+				zap.String("upstream_model", result.UpstreamModel),
+				zap.Int64("api_key_id", apiKey.ID),
+				zap.Int64("account_id", account.ID),
+			).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
+		}
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)}
 	}
 	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
@@ -248,30 +286,34 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// + responseModelBillingAdoptable。任一条件不满足都静默回落基线，即开启本模式前的
 	// 既有行为。响应模型与基线同名时直接跳过：重算必然同价，白跑一次定价解析。
 	baselineBillingModel := firstUsageBillingModel(billingModels)
-	if responseModel := responseModelBillingDeclaration(
-		input.BillingModelSource,
-		result.UpstreamResponseModel,
-		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
-	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
-		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
-			responseModels := usageBillingModelCandidates(responseModel)
-			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
-				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
-				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate,
-			)
-			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
-			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
-			// 定价基准（有渠道价就一定能算出价，循环不会落到后续候选）。
-			baselineChannelPriced := s.resolveOpenAIChannelPricing(ctx, baselineBillingModel, apiKey) != nil
-			if responseErr == nil && responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
-				logResponseModelBillingApplied("service.openai_gateway", account, result.RequestID,
-					baselineBillingModel, responseModel, cost, responseCost)
-				billingModels = responseModels
-				cost = responseCost
+	if !protectedMismatch {
+		if responseModel := responseModelBillingDeclaration(
+			input.BillingModelSource,
+			result.UpstreamResponseModel,
+			result.UpstreamResponseModelConflict,
+			result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
+				result.AudioUsage != nil || result.SearchCount > 0,
+		); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
+			if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
+				responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
+				responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
+					ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
+					videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt,
+				)
+				// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
+				// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
+				// 定价基准（有渠道价就一定能算出价，循环不会落到后续候选）。
+				baselineChannelPriced := s.resolveOpenAIChannelPricing(ctx, baselineBillingModel, apiKey) != nil
+				if responseErr == nil && responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
+					logResponseModelBillingApplied("service.openai_gateway", account, result.RequestID,
+						baselineBillingModel, responseModel, cost, responseCost)
+					billingModels = responseModels
+					cost = responseCost
+				}
 			}
 		}
+	} else if err == nil {
+		logCodexAutoReviewLunaMismatchProtected(input, result, protectedPricingSource)
 	}
 
 	// Determine billing type
@@ -513,6 +555,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	tokens UsageTokens,
 	serviceTier string,
 	longContextBillingGate *bool,
+	pricingAt time.Time,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
@@ -562,6 +605,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 				apiKey,
 				candidate,
 				multiplier,
+				pricingAt,
 				tokens,
 				serviceTier,
 				longContextBillingGate,
@@ -593,7 +637,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	if tokenCost == nil {
 		if tokenBillingAttempted {
 			if lastErr == nil {
-				lastErr = errors.New("no non-empty billing model candidates")
+				lastErr = fmt.Errorf("%w: no non-empty billing model candidates", ErrModelPricingUnavailable)
 			}
 			return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 		}
@@ -601,8 +645,11 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		if searchCost != nil {
 			return searchCost, nil
 		}
+		// 空候选按「无价可循」处理并携带 ErrModelPricingUnavailable：上层据此走
+		// 零成本+告警落账，而不是丢弃整条 usage 记录。CN 账号的 claude-* 候选被
+		// filterCNProviderBillingModelCandidates 全数过滤后即落到这里。
 		if lastErr == nil {
-			lastErr = errors.New("openai usage billing model is empty")
+			lastErr = fmt.Errorf("%w: openai usage billing model is empty", ErrModelPricingUnavailable)
 		}
 		return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 	}
@@ -651,6 +698,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	apiKey *APIKey,
 	billingModel string,
 	multiplier float64,
+	pricingAt time.Time,
 	tokens UsageTokens,
 	serviceTier string,
 	longContextBillingGate *bool,
@@ -659,7 +707,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 		gid := apiKey.Group.ID
 		return s.billingService.CalculateCostUnified(CostInput{
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier,
+			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier, PricingAt: pricingAt,
 			ServiceTier: serviceTier, Resolver: s.resolver,
 			LongContextBillingEnabled: longContextBillingGate,
 		})
@@ -670,6 +718,167 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 		multiplier,
 		serviceTier,
 		longContextBillingGate == nil || *longContextBillingGate,
+	)
+}
+
+func isUnmappedCodexAutoReviewLunaMismatch(
+	input *OpenAIRecordUsageInput,
+	result *OpenAIForwardResult,
+) bool {
+	if input == nil || result == nil || result.UpstreamResponseModelConflict {
+		return false
+	}
+
+	requested := strings.TrimSpace(input.OriginalModel)
+	if requested == "" {
+		requested = strings.TrimSpace(result.Model)
+	}
+	if !strings.EqualFold(requested, codexAutoReviewModel) {
+		return false
+	}
+
+	mapped := strings.TrimSpace(input.ChannelMappedModel)
+	if mapped != "" && !strings.EqualFold(mapped, requested) {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(result.UpstreamResponseModel), "gpt-5.6-luna") {
+		return false
+	}
+
+	mismatch := upstreamModelMismatch(
+		upstreamSentModel(result.Model, result.UpstreamModel),
+		result.UpstreamResponseModel,
+	)
+	return mismatch != nil && *mismatch
+}
+
+func (s *OpenAIGatewayService) calculateCodexAutoReviewProtectedCost(
+	ctx context.Context,
+	result *OpenAIForwardResult,
+	apiKey *APIKey,
+	multiplier float64,
+	imageMultiplier float64,
+	videoMultiplier float64,
+	baseMultiplier float64,
+	pricingAt time.Time,
+	tokens UsageTokens,
+) (*CostBreakdown, string, error) {
+	if s == nil || s.billingService == nil {
+		return nil, "", fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, codexAutoReviewModel)
+	}
+
+	var resolved *ResolvedPricing
+	if s.resolver != nil && apiKey != nil && apiKey.Group != nil {
+		gid := apiKey.Group.ID
+		resolved = s.resolver.Resolve(ctx, PricingInput{
+			Model:   codexAutoReviewModel,
+			GroupID: &gid,
+			Group:   apiKey.Group,
+		})
+	}
+
+	// Preserve the ordinary unified billing dispatch for usage shapes and
+	// administrator cards that are not token-priced. The mismatch protection is
+	// deliberately limited to the token-pricing leg; it must not turn search,
+	// audio, image, video, or per-request usage into a free token record.
+	if (result != nil && (result.WebSearchCalls > 0 || result.AudioUsage != nil || result.ImageCount > 0 || result.VideoCount > 0)) ||
+		isCodexAutoReviewProtectedNonTokenSource(resolved) {
+		cost, err := s.calculateOpenAIRecordUsageCost(
+			ctx,
+			result,
+			apiKey,
+			[]string{codexAutoReviewModel},
+			multiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			tokens,
+			"",
+			nil,
+			pricingAt,
+		)
+		return cost, codexAutoReviewProtectedPricingSource(resolved), err
+	}
+
+	var pricing *ModelPricing
+	var source string
+	if isCodexAutoReviewProtectedChannelOrGroupSource(resolved) {
+		pricing = s.resolver.GetIntervalPricing(resolved, 1)
+		if pricing == nil {
+			return nil, resolved.Source, fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, codexAutoReviewModel)
+		}
+		source = resolved.Source
+	} else {
+		var err error
+		pricing, err = s.billingService.GetCodexAutoReviewProtectedPricing()
+		if err != nil {
+			return nil, "", err
+		}
+		fallback := s.billingService.codexAutoReviewFallbackPricing()
+		if fallback != nil && pricing != nil &&
+			pricing.InputPricePerToken == fallback.InputPricePerToken &&
+			pricing.OutputPricePerToken == fallback.OutputPricePerToken &&
+			pricing.CacheReadPricePerToken == fallback.CacheReadPricePerToken &&
+			pricing.CacheCreationPricePerToken == fallback.CacheCreationPricePerToken {
+			source = "codex_fallback"
+		} else {
+			source = "dynamic"
+		}
+	}
+
+	effectiveMultiplier := multiplier * resolvedChannelTimeMultiplier(resolved, pricingAt)
+	cost := s.billingService.computeTokenBreakdown(pricing, tokens, effectiveMultiplier, "", false)
+	if cost != nil {
+		cost.BillingMode = string(BillingModeToken)
+	}
+	if result != nil && result.SearchCount > 0 {
+		searchCost := s.billingService.CalculateSearchCost(
+			result.SearchCount,
+			groupSearchPricePer1kFromAPIKey(apiKey),
+			baseMultiplier,
+		)
+		if searchCost != nil && cost != nil {
+			cost.TotalCost += searchCost.TotalCost
+			cost.ActualCost += searchCost.ActualCost
+		}
+	}
+	return cost, source, nil
+}
+
+func isCodexAutoReviewProtectedNonTokenSource(resolved *ResolvedPricing) bool {
+	return isCodexAutoReviewProtectedChannelOrGroupSource(resolved) && resolved.Mode != BillingModeToken
+}
+
+func codexAutoReviewProtectedPricingSource(resolved *ResolvedPricing) string {
+	if resolved == nil {
+		return ""
+	}
+	return resolved.Source
+}
+
+func logCodexAutoReviewLunaMismatchProtected(
+	input *OpenAIRecordUsageInput,
+	result *OpenAIForwardResult,
+	pricingSource string,
+) {
+	if input == nil || result == nil {
+		return
+	}
+	requested := strings.TrimSpace(input.OriginalModel)
+	if requested == "" {
+		requested = strings.TrimSpace(result.Model)
+	}
+	logger.L().Info("billing.codex_auto_review_luna_mismatch_protected",
+		zap.String("event", "billing.codex_auto_review_luna_mismatch_protected"),
+		zap.String("request_id", strings.TrimSpace(result.RequestID)),
+		zap.String("requested_model", requested),
+		zap.String("channel_mapped_model", strings.TrimSpace(input.ChannelMappedModel)),
+		zap.String("upstream_model", strings.TrimSpace(result.UpstreamModel)),
+		zap.String("upstream_response_model", strings.TrimSpace(result.UpstreamResponseModel)),
+		zap.Bool("model_mismatch", true),
+		zap.String("billing_model", codexAutoReviewModel),
+		zap.String("pricing_source", pricingSource),
+		zap.String("decision", "keep_auto_review_pricing"),
 	)
 }
 
@@ -847,6 +1056,36 @@ func groupMediaPricingLooksIncomplete(group *Group) bool {
 	}
 	return group.ImagePrice1K == nil && group.ImagePrice2K == nil && group.ImagePrice4K == nil &&
 		group.VideoPrice480P == nil && group.VideoPrice720P == nil && group.VideoPrice1080P == nil
+}
+
+// filterCNProviderBillingModelCandidates 过滤国产供应商（kimi/zhipu/deepseek）
+// 账号的计费候选模型名：claude-* 候选仅在运营者显式配置了分组/渠道定价时保留。
+//
+// 背景：候选链的兜底候选含客户端请求的原始模型名。CN 上游的 Anthropic 兼容端点
+// 接受 claude-* 模型名但从不真正服务 Claude 模型；若放行，目录里的 Claude 价卡
+// 与 getFallbackPricing 的 "claude"→Sonnet 统一兜底会把 CN 流量按 Claude 原价
+// （数倍～数十倍）静默误计，且 usage 日志显示的正是 claude-* 名，无从察觉。
+// 候选全部落空时走既有的零成本+告警路径（openai_usage.pricing_missing_record_
+// zero_cost），与定价层「未知型号不回退以避免误计价」的既有设计意图一致；
+// 运营者的修复手段是配置账号级 model_mapping（映射到已定价的 CN 模型）或
+// 分组/渠道显式定价。
+func (s *OpenAIGatewayService) filterCNProviderBillingModelCandidates(ctx context.Context, account *Account, apiKey *APIKey, candidates []string) []string {
+	if account == nil || !account.IsCNProvider() {
+		return candidates
+	}
+	out := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		trimmed := strings.TrimSpace(candidate)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(trimmed), "claude") &&
+			s.resolveOpenAIChannelPricing(ctx, trimmed, apiKey) == nil {
+			continue
+		}
+		out = append(out, candidate)
+	}
+	return out
 }
 
 func (s *OpenAIGatewayService) resolveOpenAIChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
@@ -1114,7 +1353,9 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {
+			notifyOpenAIAutoReset(accountID)
+		}
 	}()
 }
 
