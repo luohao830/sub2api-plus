@@ -29,6 +29,75 @@ REPOSITORY = "luohao830/sub2api-plus"
 ROOT = Path(__file__).resolve().parents[3]
 
 
+class CommandEnvironmentTest(unittest.TestCase):
+    def test_gh_commands_disable_terminal_formatting(self) -> None:
+        completed = subprocess.CompletedProcess(["gh"], 0, stdout="")
+        with mock.patch.object(
+            release_cli.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            release_cli.run_command(["gh", "pr", "view", "1"], capture=True)
+
+        command_env = run.call_args.kwargs["env"]
+        self.assertEqual("0", command_env["GH_FORCE_TTY"])
+        self.assertEqual("1", command_env["NO_COLOR"])
+        self.assertEqual("0", command_env["CLICOLOR"])
+
+    def test_non_gh_commands_keep_inherited_environment(self) -> None:
+        completed = subprocess.CompletedProcess(["git"], 0, stdout="")
+        with mock.patch.object(
+            release_cli.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            release_cli.run_command(["git", "status"], capture=True)
+
+        self.assertIsNone(run.call_args.kwargs["env"])
+
+
+class PullRequestDetailsTest(unittest.TestCase):
+    def test_hydrates_base_oid_through_rest_api(self) -> None:
+        with (
+            mock.patch.object(
+                release_cli,
+                "json_capture",
+                return_value={
+                    "number": 17,
+                    "state": "OPEN",
+                    "isDraft": False,
+                    "baseRefName": "main",
+                    "headRefName": "release/candidate",
+                    "headRefOid": HEAD,
+                    "headRepositoryOwner": {"login": "luohao830"},
+                    "mergeStateStatus": "CLEAN",
+                    "mergeCommit": None,
+                    "autoMergeRequest": None,
+                    "body": marker(),
+                    "url": "https://github.com/luohao830/sub2api-plus/pull/17",
+                },
+            ),
+            mock.patch.object(
+                release_cli,
+                "capture",
+                return_value=BASE,
+            ) as capture,
+        ):
+            result = release_cli.pull_request_details(REPOSITORY, 17)
+
+        self.assertEqual(BASE, result.base_oid)
+        self.assertEqual(
+            [
+                "gh",
+                "api",
+                f"repos/{REPOSITORY}/pulls/17",
+                "--jq",
+                ".base.sha",
+            ],
+            capture.call_args.args[0],
+        )
+
+
 def marker(
     base: str = BASE,
     head: str = HEAD,
