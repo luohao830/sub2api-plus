@@ -70,13 +70,13 @@ curl -sSL https://raw.githubusercontent.com/luohao830/sub2api-plus/main/deploy/i
 が返す別のタグへ置き換えてください：
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/luohao830/sub2api-plus/main/deploy/install.sh | sudo bash -s -- install --version 'v0.1.183+custom.005'
+curl -sSL https://raw.githubusercontent.com/luohao830/sub2api-plus/main/deploy/install.sh | sudo bash -s -- install --version 'v0.2.0+custom.002'
 ```
 
 既存のバイナリインストールを以前の公開済みバージョンへロールバックします：
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/luohao830/sub2api-plus/main/deploy/install.sh | sudo bash -s -- rollback 'v0.1.183+custom.004'
+curl -sSL https://raw.githubusercontent.com/luohao830/sub2api-plus/main/deploy/install.sh | sudo bash -s -- rollback 'v0.1.183+custom.005'
 ```
 
 サービスとバイナリを削除し、`/etc/sub2api` は保持します：
