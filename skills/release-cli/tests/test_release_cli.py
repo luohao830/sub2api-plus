@@ -25,7 +25,7 @@ TAG = "v1.2.3+custom.009"
 BASE = "a" * 40
 HEAD = "b" * 40
 MERGE = "c" * 40
-REPOSITORY = "LuckyKuang/sub2api-plus"
+REPOSITORY = "luohao830/sub2api-plus"
 ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -136,12 +136,12 @@ def pull_request(
         base_oid=base,
         head_branch="release/candidate",
         head_oid=head,
-        head_owner="LuckyKuang",
+        head_owner="luohao830",
         merge_state="CLEAN",
         merge_commit=merge,
         auto_merge_enabled=auto_merge,
         body=marker(base, head),
-        url="https://github.com/LuckyKuang/sub2api-plus/pull/17",
+        url="https://github.com/luohao830/sub2api-plus/pull/17",
     )
 
 
@@ -552,7 +552,7 @@ class ReleaseMonitoringTest(unittest.TestCase):
     def test_monitor_watches_automatic_publication_through_success(self) -> None:
         run = release_cli.WorkflowRun(
             database_id=123,
-            url="https://github.com/LuckyKuang/sub2api-plus/actions/runs/123",
+            url="https://github.com/luohao830/sub2api-plus/actions/runs/123",
             status="in_progress",
             conclusion=None,
         )
@@ -604,7 +604,7 @@ class ReleaseMonitoringTest(unittest.TestCase):
     def test_waiting_environment_is_policy_drift(self) -> None:
         run = release_cli.WorkflowRun(
             database_id=123,
-            url="https://github.com/LuckyKuang/sub2api-plus/actions/runs/123",
+            url="https://github.com/luohao830/sub2api-plus/actions/runs/123",
             status="waiting",
             conclusion=None,
         )
