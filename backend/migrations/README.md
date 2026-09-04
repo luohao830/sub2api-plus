@@ -94,3 +94,7 @@ historical incidents and must not be used for routine development.
 
 Runner implementation:
 `backend/internal/repository/migrations_runner.go`.
+
+For the three-layer official -> Plus -> fork compatibility policy, migration
+source mapping, and conflict-resolution procedure, see
+[`docs/MIGRATION_LINEAGE.md`](../../docs/MIGRATION_LINEAGE.md).

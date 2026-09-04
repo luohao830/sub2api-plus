@@ -1,10 +1,11 @@
 # AGENTS.md
 |Scope:Repository-wide|Keep this file normative and short|Put commands, examples, and explanations in linked sources of truth.
-|Sources:App version=backend/cmd/server/VERSION|Go=backend/go.mod|Node/pnpm=frontend/package.json|release/lint=.tool-versions|development/checks=CONTRIBUTING.md|releases=docs/RELEASING.md|upstream=UPSTREAM.md|migrations=backend/migrations/README.md|deployment/security=deploy/|Do not duplicate current versions here.
+|Sources:App version=backend/cmd/server/VERSION|Go=backend/go.mod|Node/pnpm=frontend/package.json|release/lint=.tool-versions|development/checks=CONTRIBUTING.md|releases=docs/RELEASING.md|upstream=UPSTREAM.md|migrations=backend/migrations/README.md|migration-lineage=docs/MIGRATION_LINEAGE.md|deployment/security=deploy/|Do not duplicate current versions here.
 |Dependencies:Use pnpm only|Update frontend/pnpm-lock.yaml for dependency changes|Inspect existing dependencies and project patterns before adding packages or infrastructure.
 |Generated Code:Do not edit generated Ent/Wire files|After schema changes regenerate both and commit output.
 |Interfaces:When a Go interface changes, update every implementation, stub, and mock.
 |Migrations:Existing SQL migrations are immutable and forward-only|Use a unique increasing prefix|Use _notx.sql only for concurrent indexes.
+|Migration Lineage:This fork is a third-layer distribution (official -> Plus -> fork)|Production schema_migrations and released fork filenames/checksums are authoritative for compatibility|Never overwrite or rename a released migration|Map an unshipped Plus migration to a new prefix above the fork maximum|Record source-file/checksum mappings and test every supported upgrade path in docs/MIGRATION_LINEAGE.md.
 |Configuration:New fields require defaults or environment bindings, tests, and synchronized deploy/ examples.
 |Protocol Documentation:Update provider/protocol docs for endpoint, auth, billing, quota, scheduling, default, or error-behavior changes.
 |README:Keep core section IDs and links aligned across README.md, README_CN.md, and README_JA.md|Put details under docs/ or deploy/.
