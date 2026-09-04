@@ -95,3 +95,12 @@ merges and update this mapping in the same release-preparation change.
 Historical `-custom.NNN` Git naming was migrated to the canonical
 `+custom.NNN` form. OCI tags continue to use `-custom.NNN` because OCI tags do
 not support `+`.
+
+## Current Plus Parent
+
+The fork `plus/main` mirror is synchronized to Plus
+`v0.2.0+custom.002` at commit
+`8df457f85568ab3b1c80de07ae59b2ef53183e80`. The corresponding sync into fork
+`main` is the current integration change; the corresponding fork release
+remains pending. Migration filename mappings are recorded in
+[`docs/MIGRATION_LINEAGE.md`](docs/MIGRATION_LINEAGE.md).
