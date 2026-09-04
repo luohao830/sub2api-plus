@@ -1,55 +1,38 @@
-Sub2API Plus v0.2.0+custom.002
+Sub2API Plus v0.2.0+custom.003
 
 ## Highlights
 
-- Imported the Plus `v0.2.0+custom.001` feature set and the follow-up Plus main
-  metadata commit into the fork.
-- Preserved the fork's OpenAI subscription quota reset monitor, including
-  account and user-subscription targeting, dry-run observation, and reset-card
-  handling.
-- Added the upstream v0.2.0 Codex routing, reasoning-effort, native-compaction,
-  billing, and group-policy improvements.
+- 发布同一官方 v0.2.0 基线上的 fork 修订版，包含 Plus v0.2.0+custom.002
+  的最新客户端断开风险、内容审核会话阻断、用量完成元数据和网关修复。
+- 保留 fork 的 OpenAI 官方订阅额度重置联动功能及其管理界面、任务调度和
+  手动重置卡处理逻辑。
 
 ## Changed
 
-- Kept the fork's distribution identity, installation links, and container image
-  names while retaining Plus attribution and module compatibility.
-- Kept the fork migration history immutable. The upstream native-compaction
-  migration is represented as `245_add_usage_log_native_compaction_v2.sql` after
-  the existing fork migration `238_subscription_quota_reset_monitors.sql`.
-- Added the Plus v0.2.0 release-finalization metadata to the fork's `plus/main`
-  mirror before this release was prepared.
-
-## Fixed
-
-- Retained the subscription reset monitor's explicit manual-reset detection so a
-  reset-card use is not mistaken for an official quota reset unless configured.
-- Preserved the upstream Codex identity, routing, and usage-accounting fixes
-  while carrying forward the fork's monitor API, worker, UI, and tests.
+- `plus/main` 固定镜像继续对应 Plus v0.2.0+custom.002，fork 的发布、安装
+  地址和 GHCR 镜像身份保持不变。
+- 保持已发布迁移不可变：Plus 的等价迁移不重复执行，新 Plus 迁移使用 fork
+  的 246-251 前缀，并在迁移谱系文档中记录 checksum 映射。
 
 ## Compatibility and migration
 
-- This release applies forward-only migrations `238` through `245`. Migration
-  `238` creates the fork-owned subscription quota reset monitor tables; `239`
-  through `245` add the upstream v0.2.0 usage, group-policy, pricing, and
-  native-compaction fields.
-- Existing account credentials and subscription assignments are unchanged.
-  Review monitor rules in dry-run mode before enabling automatic execution.
-- The release is based on the fork `v0.1.183+custom.005` plus the synchronized
-  Plus v0.2.0 baseline and the fork's subscription quota reset monitor changes.
+- 本版本从 fork v0.2.0+custom.002 前向升级，按顺序执行新增的 246-251 迁移。
+- 已发布 fork 迁移文件和生产数据库中的 `schema_migrations` 记录不得改名、
+  覆盖或手工修改 checksum。直接从 Plus 数据库升级前，必须先盘点迁移文件名
+  和 checksum，并完成兼容/adoption 设计。
+- 现有账号、订阅分配和官方订阅重置联动规则保持兼容；升级后建议先以观察模式
+  检查联动规则，再启用自动执行。
 
 ## Known issues
 
-- Official quota-reset detection depends on the OpenAI OAuth account response;
-  a reset that occurs between polling intervals can only be classified on the
-  next observed snapshot.
-- The first startup after upgrade may spend additional time applying the new
-  forward-only migrations on large usage-log tables.
+- 官方额度重置检测依赖 OpenAI OAuth 账号返回的数据；重置发生在两次轮询之间
+  时，会在下一次观测时被识别。
+- 首次启动可能需要为新增的用量、内容审核和客户端断开风险表执行迁移，大型
+  用量日志数据库的启动时间可能增加。
 
 ## Upstream baseline
 
 Official release: v0.2.0
 Official commit: aa236488351eb71e120fc2b6fb32e36b0374c918
-Plus baseline: v0.2.0+custom.001
-Plus tag commit: 2b921d7bf09c0484678862b854b52a4a0fb08dda
-Plus main synchronization commit: 1bd44a7ef1c208eb5ff246da5269bbcc82dab6cd
+Plus baseline: v0.2.0+custom.002
+Plus tag commit: 8df457f85568ab3b1c80de07ae59b2ef53183e80
