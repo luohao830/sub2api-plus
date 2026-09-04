@@ -176,6 +176,26 @@ Plus 自己已经采用过同样的下游处理方式：
 官方 SQL/commit 用来确认功能语义。本 fork 的生产记录和已发布文件仍然拥有
 最高兼容优先级。
 
+## 本次 Plus v0.2.0+custom.002 同步记录
+
+本次同步来源为 Plus tag `v0.2.0+custom.002`，提交
+`8df457f85568ab3b1c80de07ae59b2ef53183e80`。同步前 fork `main` 的基线为
+`4748515e594f5580f18aac6f93fcc3dbe4f3b49b`。
+
+| Plus 文件 | Plus SHA256 | fork 文件 | 处理 |
+| --- | --- | --- | --- |
+| `238_add_usage_log_native_compaction_v2.sql` | `8e0ce1864caea450f49b250a2b9c992ef19698a7d689ef772b256a7114e56474` | `245_add_usage_log_native_compaction_v2.sql` | 内容等价，保留 fork 已发布文件，不重复执行 |
+| `245_client_disconnect_risk.sql` | `ef5f2dfd8e66c3ab2e7d657e5ddf511bb9ff2415802cc2544266c6eed53595b0` | `246_client_disconnect_risk.sql` | 新增迁移，顺延编号 |
+| `246_client_disconnect_lifecycle_observability.sql` | `bd5173e218035dd495dfba7dbad56c58f8741cea616e5695d4520dbd440e6036` | `247_client_disconnect_lifecycle_observability.sql` | 新增迁移，顺延编号 |
+| `247_usage_log_completion_metadata.sql` | `aafba61803f1cdbd9a4d657b5cf61206b2ca106a344f798a70019298722e4933` | `248_usage_log_completion_metadata.sql` | 新增迁移，顺延编号 |
+| `248_content_moderation_session_blocks.sql` | `aaf08475423206072a1b1e59761d01d2f61751c64a0676db702685ec2ed33ed5` | `249_content_moderation_session_blocks.sql` | 新增迁移，顺延编号 |
+| `249_content_moderation_session_blocks_unique.sql` | `2ae262d29d860e66ee403f1217bec3b9efb215ad02aeab4bba7360f04a10f0c7` | `250_content_moderation_session_blocks_unique.sql` | 新增迁移，顺延编号 |
+| `250_content_moderation_input_content.sql` | `1b38db1209928a0836e38f2cd3da2b74c635321808ed6163378a1ea61596d847` | `251_content_moderation_input_content.sql` | 新增迁移，顺延编号 |
+
+这些重编号只适用于尚未进入 fork 支持范围的 Plus 文件。若数据库曾直接运行
+Plus 版本，必须先完成 Plus 文件名的执行记录盘点和 adoption/兼容桥设计，
+不能把本表当作自动接管证明。
+
 ## 生产盘点查询
 
 在执行同步或升级前，保存以下结果（不要把数据库内容提交到 Git）：
