@@ -30,6 +30,7 @@ below for detailed configuration and maintenance instructions.
 - [Release process](RELEASING.md)
 - [Upstream mapping](../UPSTREAM.md)
 - [Database migrations](../backend/migrations/README.md)
+- [Migration lineage and downstream compatibility](MIGRATION_LINEAGE.md)
 - [Authentication and Passkeys](AUTHENTICATION.md)
 - [Model Plaza visibility](MODEL_PLAZA.md)
 
