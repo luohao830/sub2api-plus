@@ -1335,6 +1335,60 @@ func TestOpenAIGatewayServiceRecordUsage_GroupOrAccountLongContextAllows(t *test
 	})
 }
 
+func TestOpenAIGatewayServiceRecordUsage_GPT6AstraPlatformAPIKeyAlwaysUsesOfficialLongContextRates(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	tokens := OpenAIUsage{
+		InputTokens:              272_001,
+		CacheCreationInputTokens: 100_000,
+		CacheReadInputTokens:     72_001,
+		OutputTokens:             100,
+	}
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_gpt6_astra_long_context",
+			Usage:     tokens,
+			Model:     "gpt-6-astra",
+			Duration:  time.Second,
+		},
+		APIKey: openAIRecordUsageAPIKeyWithGroup(svc, 1060, false),
+		User:   &User{ID: 2060},
+		Account: &Account{
+			ID:       3060,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra:    map[string]any{openAILongContextBillingEnabledKey: false},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.True(t, usageRepo.lastLog.LongContextBillingApplied)
+	require.InDelta(t, 100_000*10e-6*2, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, 100_000*12.5e-6*2, usageRepo.lastLog.CacheCreationCost, 1e-12)
+	require.InDelta(t, 72_001*1e-6*2, usageRepo.lastLog.CacheReadCost, 1e-12)
+	require.InDelta(t, 100*50e-6*1.5, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, usageRepo.lastLog.TotalCost*1.1, usageRepo.lastLog.ActualCost, 1e-12)
+	require.Equal(t, 1, userRepo.deductCalls)
+}
+
+func TestOpenAILongContextBillingGate_AstraOverrideIsScopedToPlatformAPIKeys(t *testing.T) {
+	disabled := map[string]any{openAILongContextBillingEnabledKey: false}
+
+	astraAPIKey := openAILongContextBillingGate(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: disabled}, "gpt-6-astra")
+	require.NotNil(t, astraAPIKey)
+	require.True(t, *astraAPIKey)
+
+	existingModel := openAILongContextBillingGate(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: disabled}, "gpt-5.6-sol")
+	require.NotNil(t, existingModel)
+	require.False(t, *existingModel)
+
+	astraOAuth := openAILongContextBillingGate(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: disabled}, "gpt-6-astra")
+	require.NotNil(t, astraOAuth)
+	require.False(t, *astraOAuth)
+}
+
 // openai_long_context_billing_enabled is an OpenAI-only account setting, so it
 // must not veto the official Grok >=200k ladder: a Grok account has no way to
 // ever set that flag, which would make the group toggle unreachable.
@@ -1512,9 +1566,8 @@ func TestNormalizeOpenAIServiceTier(t *testing.T) {
 
 	t.Run("openai official tiers preserved", func(t *testing.T) {
 		// OpenAI 官方文档定义的合法 tier 值都应被透传保留，避免因白名单过窄
-		// 静默剥离客户端显式发送的合法字段。Codex 客户端只发 priority/flex，
-		// 所以扩大白名单对 Codex 流量零影响（见 codex-rs/core/src/client.rs）。
-		for _, tier := range []string{"priority", "flex", "auto", "default", "scale"} {
+		// 静默剥离客户端显式发送的合法字段。Codex 会发 priority/flex/ultrafast。
+		for _, tier := range []string{"priority", "flex", "auto", "default", "scale", "ultrafast"} {
 			got := normalizeOpenAIServiceTier(tier)
 			require.NotNil(t, got, "tier %q should not be normalized to nil", tier)
 			require.Equal(t, tier, *got)
@@ -1533,6 +1586,7 @@ func TestExtractOpenAIServiceTier(t *testing.T) {
 	require.Equal(t, "auto", *extractOpenAIServiceTier(map[string]any{"service_tier": "auto"}))
 	require.Equal(t, "default", *extractOpenAIServiceTier(map[string]any{"service_tier": "default"}))
 	require.Equal(t, "scale", *extractOpenAIServiceTier(map[string]any{"service_tier": "scale"}))
+	require.Equal(t, "ultrafast", *extractOpenAIServiceTier(map[string]any{"service_tier": "ultrafast"}))
 	require.Nil(t, extractOpenAIServiceTier(map[string]any{"service_tier": 1}))
 	require.Nil(t, extractOpenAIServiceTier(nil))
 }
@@ -1543,6 +1597,7 @@ func TestExtractOpenAIServiceTierFromBody(t *testing.T) {
 	require.Equal(t, "auto", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"auto"}`)))
 	require.Equal(t, "default", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"default"}`)))
 	require.Equal(t, "scale", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"scale"}`)))
+	require.Equal(t, "ultrafast", *extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"ultrafast"}`)))
 	require.Nil(t, extractOpenAIServiceTierFromBody([]byte(`{"service_tier":"turbo"}`)))
 	require.Nil(t, extractOpenAIServiceTierFromBody(nil))
 }
