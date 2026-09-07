@@ -52,6 +52,7 @@ procedures are documented in [`docs/RELEASING.md`](docs/RELEASING.md).
 | `v0.1.183+custom.005` | `v0.1.183` | `e8cb019fabf8b55199436229044cbf9aa7a82564` | published |
 | `v0.2.0+custom.002` | `v0.2.0` | `aa236488351eb71e120fc2b6fb32e36b0374c918` | published |
 | `v0.2.0+custom.003` | `v0.2.0` | `aa236488351eb71e120fc2b6fb32e36b0374c918` | published |
+| `v0.2.1+custom.001` | `v0.2.1` | `578785ee7fb35030b094b69624efe25670a36f5f` | planned |
 
 `v0.1.166+custom.007` is marked invalid because its tag contains embedded and
 documented version `0.1.166+custom.006`. Remote Release and OCI artifact status
@@ -100,8 +101,9 @@ not support `+`.
 ## Current Plus Parent
 
 The fork `plus/main` mirror is synchronized to Plus
-`v0.2.0+custom.002` at commit
-`8df457f85568ab3b1c80de07ae59b2ef53183e80`. The corresponding sync into fork
-`main` is the current integration change; the corresponding fork release
-remains pending. Migration filename mappings are recorded in
+`v0.2.1+custom.001` at commit
+`42ad960c7d1035ea5125efebffec88a5ccab16d9`. The corresponding Plus release
+tag points to `39f6e2908975636956c184bbc084e90c8b392f74`. The corresponding
+sync into fork `main` is the current integration change; the corresponding fork
+release remains pending. Migration filename mappings are recorded in
 [`docs/MIGRATION_LINEAGE.md`](docs/MIGRATION_LINEAGE.md).

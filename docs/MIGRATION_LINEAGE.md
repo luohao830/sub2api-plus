@@ -218,3 +218,38 @@ ORDER BY filename;
 - 为普通分叉冲突添加 checksum 兼容白名单。
 - 因为测试只通过了全新数据库，就宣称生产升级安全。
 - 用应用镜像回滚代替数据库备份或补偿迁移。
+
+## 本次 Plus v0.2.1+custom.001 同步记录
+
+本次同步来源为 Plus tag `v0.2.1+custom.001`（tag commit
+`39f6e2908975636956c184bbc084e90c8b392f74`，Plus `main` 同步提交
+`42ad960c7d1035ea5125efebffec88a5ccab16d9`）。同步前 fork `main` 的基线为
+`47056a7d0736ea1213f6fcf795e554573a0d1bc3`，fork 已发布迁移最大前缀为
+`251`。
+
+Plus 中以下迁移与 fork 已发布迁移内容完全等价，因此保留 fork 文件身份，
+不让同一逻辑再次执行：
+
+| Plus 文件 | Plus SHA256 | fork 文件 | fork SHA256 | 处理 |
+| --- | --- | --- | --- | --- |
+| `238_add_usage_log_native_compaction_v2.sql` | `8e0ce1864caea450f49b250a2b9c992ef19698a7d689ef772b256a7114e56474` | `245_add_usage_log_native_compaction_v2.sql` | `8e0ce1864caea450f49b250a2b9c992ef19698a7d689ef772b256a7114e56474` | 内容等价，保留 fork 文件 |
+| `245_client_disconnect_risk.sql` | `ef5f2dfd8e66c3ab2e7d657e5ddf511bb9ff2415802cc2544266c6eed53595b0` | `246_client_disconnect_risk.sql` | `ef5f2dfd8e66c3ab2e7d657e5ddf511bb9ff2415802cc2544266c6eed53595b0` | 内容等价，保留 fork 文件 |
+| `246_client_disconnect_lifecycle_observability.sql` | `bd5173e218035dd495dfba7dbad56c58f8741cea616e5695d4520dbd440e6036` | `247_client_disconnect_lifecycle_observability.sql` | `bd5173e218035dd495dfba7dbad56c58f8741cea616e5695d4520dbd440e6036` | 内容等价，保留 fork 文件 |
+| `247_usage_log_completion_metadata.sql` | `aafba61803f1cdbd9a4d657b5cf61206b2ca106a344f798a70019298722e4933` | `248_usage_log_completion_metadata.sql` | `aafba61803f1cdbd9a4d657b5cf61206b2ca106a344f798a70019298722e4933` | 内容等价，保留 fork 文件 |
+| `248_content_moderation_session_blocks.sql` | `aaf08475423206072a1b1e59761d01d2f61751c64a0676db702685ec2ed33ed5` | `249_content_moderation_session_blocks.sql` | `aaf08475423206072a1b1e59761d01d2f61751c64a0676db702685ec2ed33ed5` | 内容等价，保留 fork 文件 |
+| `249_content_moderation_session_blocks_unique.sql` | `2ae262d29d860e66ee403f1217bec3b9efb215ad02aeab4bba7360f04a10f0c7` | `250_content_moderation_session_blocks_unique.sql` | `2ae262d29d860e66ee403f1217bec3b9efb215ad02aeab4bba7360f04a10f0c7` | 内容等价，保留 fork 文件 |
+| `250_content_moderation_input_content.sql` | `1b38db1209928a0836e38f2cd3da2b74c635321808ed6163378a1ea61596d847` | `251_content_moderation_input_content.sql` | `1b38db1209928a0836e38f2cd3da2b74c635321808ed6163378a1ea61596d847` | 内容等价，保留 fork 文件 |
+
+Plus 本次新增迁移按 fork 当前最大前缀顺延，保持原有相对顺序：
+
+| Plus 文件 | Plus SHA256 | fork 文件 | fork SHA256 | 处理 |
+| --- | --- | --- | --- | --- |
+| `251_channel_monitor_gpt6_astra.sql` | `8e4259020b0d33cdf3f1368cec240343678513a52604708401bbeb276acc3aa6` | `252_channel_monitor_gpt6_astra.sql` | `8e4259020b0d33cdf3f1368cec240343678513a52604708401bbeb276acc3aa6` | 新增父层迁移，顺延编号 |
+| `252_add_usage_log_upstream_request_id.sql` | `8a6c3af7e47e9b768df9927b0e052fa8a4bd8419ac767e7c8ca21cdfb01ce606` | `253_add_usage_log_upstream_request_id.sql` | `8a6c3af7e47e9b768df9927b0e052fa8a4bd8419ac767e7c8ca21cdfb01ce606` | 新增父层迁移，顺延编号 |
+| `253_add_usage_log_upstream_request_id_index_notx.sql` | `41c32a383794730d2bfd88514bf999cfb156cb06324c46b54642736ac8f2fff6` | `254_add_usage_log_upstream_request_id_index_notx.sql` | `41c32a383794730d2bfd88514bf999cfb156cb06324c46b54642736ac8f2fff6` | 新增父层迁移，顺延编号 |
+| `254_channel_max_reasoning_effort_multiplier.sql` | `448b59b3168fe4dfe2417f1abd9657d124708c279e2245d55149087838d8c8d6` | `255_channel_max_reasoning_effort_multiplier.sql` | `448b59b3168fe4dfe2417f1abd9657d124708c279e2245d55149087838d8c8d6` | 新增父层迁移，顺延编号 |
+| `255_group_codex_models_manifest_config.sql` | `8ef9cd9a6a963e79823f8f5d703a6b31fa30ebfca9f8d2337dd451765178e5a0` | `256_group_codex_models_manifest_config.sql` | `8ef9cd9a6a963e79823f8f5d703a6b31fa30ebfca9f8d2337dd451765178e5a0` | 新增父层迁移，顺延编号 |
+
+这些编号调整只针对尚未进入 fork 发布历史的 Plus 文件；已发布的 fork
+迁移文件没有改名、覆盖或修改 checksum。声明支持 Plus 数据库升级前，仍需
+使用实际 Plus 数据库快照验证 `schema_migrations`、启动迁移和数据状态。
