@@ -61,9 +61,9 @@ still require a maintainer audit. Do not reuse or retag `.007`.
 ## Current Version
 
 ```text
-Git/GitHub: v0.2.0+custom.003
-Application: 0.2.0+custom.003
-GHCR: ghcr.io/luohao830/sub2api-plus:v0.2.0-custom.003
+Git/GitHub: v0.2.1+custom.001
+Application: 0.2.1+custom.001
+GHCR: ghcr.io/luohao830/sub2api-plus:v0.2.1-custom.001
 ```
 
 ## Naming

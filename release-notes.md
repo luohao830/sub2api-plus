@@ -1,38 +1,30 @@
-Sub2API Plus v0.2.0+custom.003
+Sub2API Plus v0.2.1+custom.001
 
 ## Highlights
 
-- 发布同一官方 v0.2.0 基线上的 fork 修订版，包含 Plus v0.2.0+custom.002
-  的最新客户端断开风险、内容审核会话阻断、用量完成元数据和网关修复。
-- 保留 fork 的 OpenAI 官方订阅额度重置联动功能及其管理界面、任务调度和
-  手动重置卡处理逻辑。
+- 同步 LuckyKuang/sub2api-plus v0.2.1+custom.001，纳入 Plus 的最新 Codex、用量记录、频道配置和网关改进。
+- 保留 fork 已有的官方订阅额度重置联动、管理界面、任务调度及手动重置卡兼容逻辑。
 
 ## Changed
 
-- `plus/main` 固定镜像继续对应 Plus v0.2.0+custom.002，fork 的发布、安装
-  地址和 GHCR 镜像身份保持不变。
-- 保持已发布迁移不可变：Plus 的等价迁移不重复执行，新 Plus 迁移使用 fork
-  的 246-251 前缀，并在迁移谱系文档中记录 checksum 映射。
+- `plus/main` 镜像固定对应 Plus v0.2.1+custom.001；发布、安装地址和 GHCR 镜像继续使用本 fork。
+- 迁移保持不可变：已发布 fork 迁移文件不改名、不覆盖；Plus 新迁移映射为 fork 的 252-256 前缀，并在迁移谱系中记录源文件与 checksum。
 
 ## Compatibility and migration
 
-- 本版本从 fork v0.2.0+custom.002 前向升级，按顺序执行新增的 246-251 迁移。
-- 已发布 fork 迁移文件和生产数据库中的 `schema_migrations` 记录不得改名、
-  覆盖或手工修改 checksum。直接从 Plus 数据库升级前，必须先盘点迁移文件名
-  和 checksum，并完成兼容/adoption 设计。
-- 现有账号、订阅分配和官方订阅重置联动规则保持兼容；升级后建议先以观察模式
-  检查联动规则，再启用自动执行。
+- 支持从 fork v0.2.0+custom.003 以及此前已发布 fork 版本前向升级。启动时会按顺序执行新增的 252-256 迁移。
+- 生产数据库中的 `schema_migrations` 记录和已发布迁移 checksum 不得手工修改。升级前请先备份数据库，并确认应用使用本版本的完整迁移目录。
+- 现有账号、订阅分配、Codex 会话粘性和官方订阅重置联动规则保持兼容；升级后建议先以观察模式检查联动规则，再启用自动执行。
 
 ## Known issues
 
-- 官方额度重置检测依赖 OpenAI OAuth 账号返回的数据；重置发生在两次轮询之间
-  时，会在下一次观测时被识别。
-- 首次启动可能需要为新增的用量、内容审核和客户端断开风险表执行迁移，大型
-  用量日志数据库的启动时间可能增加。
+- 官方额度重置检测依赖 OpenAI OAuth 账号返回的数据；若重置发生在两次轮询之间，会在下一次检查时识别。
+- 首次启动可能需要执行新增的用量与频道配置迁移，大型用量日志数据库的启动时间可能增加。
 
 ## Upstream baseline
 
-Official release: v0.2.0
-Official commit: aa236488351eb71e120fc2b6fb32e36b0374c918
-Plus baseline: v0.2.0+custom.002
-Plus tag commit: 8df457f85568ab3b1c80de07ae59b2ef53183e80
+Official release: v0.2.1
+Official commit: 578785ee7fb35030b094b69624efe25670a36f5f
+Plus baseline: v0.2.1+custom.001
+Plus tag commit: 39f6e2908975636956c184bbc084e90c8b392f74
+Plus main commit: 42ad960c7d1035ea5125efebffec88a5ccab16d9
